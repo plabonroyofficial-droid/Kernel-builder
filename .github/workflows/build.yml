@@ -220,17 +220,19 @@ jobs:
                HOSTCFLAGS="-fcommon" \
                HOSTCXXFLAGS="-fcommon"
 
-      # ৬. বিশেষ RTL8188FU ড্রাইভার কম্পাইলেশন (১০০% পারফেক্ট ফিক্স)
+      # ৬. বিশেষ RTL8188FU ড্রাইভার কম্পাইলেশন (ম্যাক্রো বাইপাস ফিক্স)
       - name: Build and Package Dedicated RTL8188FU (0bda:f179) Driver
         run: |
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           git clone https://github.com/kelebek333/rtl8188fu rtl8188fu
           cd rtl8188fu
           
-          # Roaming এরর ফিক্স ও মনিটর মোড অন
+          # পাওয়ার সেভিং অফ ও মনিটর মোড অন
           sed -i 's/CONFIG_POWER_SAVING = y/CONFIG_POWER_SAVING = n/' Makefile
           sed -i 's/CONFIG_WIFI_MONITOR = n/CONFIG_WIFI_MONITOR = y/' Makefile
-          sed -i 's/cfg80211_roamed(/\/\/ cfg80211_roamed(/g' os_dep/linux/ioctl_cfg80211.c
+          
+          # C Macro দিয়ে পুরো ফাংশনাল মাল্টি-লাইন কল বাইপাস ফিক্স
+          sed -i 's/#include <net\/cfg80211.h>/#include <net\/cfg80211.h>\n#undef cfg80211_roamed\n#define cfg80211_roamed(...) do {} while(0)/g' os_dep/linux/ioctl_cfg80211.c
           
           make -j$(nproc --all) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KSRC=../kernel/out modules
           cd ..
