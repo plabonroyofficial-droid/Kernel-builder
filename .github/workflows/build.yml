@@ -1,4 +1,4 @@
-name: Build Kali NetHunter Ultimate Master Kernel (Fixed KSU & RTL8188FU)
+name: Build Kali NetHunter Titan OC Kernel (Powered by Plabon)
 
 on:
   workflow_dispatch:
@@ -19,27 +19,27 @@ jobs:
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 -b lineage-19.1 gcc64
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 -b lineage-19.1 gcc32
 
-      # ২. কার্নেল সোর্স কোড ক্লোন
+      # ২. কার্নেল সোর্স কোড ক্লোন ও KernelSU Next v2 আপডেট
       - name: Clone Samsung M11 Kernel Source
         run: |
           git clone https://github.com/ifoodplayer/android_kernel_samsung_sdm450 kernel
           cd kernel
           git checkout 182f7ee || true
           
-          # KernelSU Next v2 Signature ফিক্স (ম্যানেজার 12851-এর জন্য লেটেস্ট ড্রাইভার আপডেট)
+          # KernelSU Next v2 Signature ফিক্স (Manager 12851 Support)
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash - || true
           cd ..
           
-      # ৩. AnyKernel3 অটোমেশন (Auto Driver & Firmware Installer সহ)
-      - name: Setup Pre-Configured AnyKernel3
+      # ৩. AnyKernel3 অটোমেশন (Plabon Roy Developer Credits + Auto Module/Firmware Installer)
+      - name: Setup Pre-Configured AnyKernel3 with Plabon Roy Credits
         run: |
           git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
           cat << 'EOF' > AnyKernel3/anykernel.sh
           ### AnyKernel3 Ramdisk Mod Script
-          ## Custom NetHunter Edition by Plabon Roy
+          ## Custom NetHunter Titan Edition by Plabon Roy
 
           properties() { '
-          kernel.string=Kali NetHunter Ultimate v1.0 by Plabon Roy
+          kernel.string=Kali NetHunter Titan OC by Plabon Roy
           do.devicecheck=1
           do.modules=0
           do.systemless=0
@@ -64,8 +64,8 @@ jobs:
 
           ui_print " ";
           ui_print "============================================";
-          ui_print "   KALI NETHUNTER ULTIMATE MASTER KERNEL    ";
-          ui_print "        For Galaxy M11/A11 (SDM450)         ";
+          ui_print "    KALI NETHUNTER TITAN OC MASTER KERNEL   ";
+          ui_print "       CPU: 2.2GHz | GPU: 800MHz Max        ";
           ui_print "============================================";
           ui_print " [•] Lead Developer : Plabon Roy";
           ui_print " [•] GitHub Profile : github.com/plabonroyofficial";
@@ -77,12 +77,12 @@ jobs:
           dump_boot;
 
           ui_print " [•] Patching Boot Image...";
-          ui_print " [•] Injecting NetHunter Kernel Binary...";
+          ui_print " [•] Injecting Titan NetHunter Kernel Binary...";
 
           write_boot;
 
           # RTL8188FU Driver Module & Firmware Auto-Install
-          ui_print " [•] Installing RTL8188FU Driver & Firmware...";
+          ui_print " [•] Installing RTL8188FU (0bda:f179) Driver & Firmware...";
           mount -o rw,remount /vendor 2>/dev/null || true
           mount -o rw,remount /system 2>/dev/null || true
           mkdir -p /vendor/lib/modules /vendor/firmware/rtlwifi /etc/firmware/rtlwifi /lib/firmware/rtlwifi
@@ -98,12 +98,14 @@ jobs:
           ui_print " ";
           EOF
 
-      # ৪. কার্নেল কনফিগারেশন এবং ১০০% ড্রাইভার ইনজেকশন
-      - name: Configure Master NetHunter Drivers via Official Kernel Engine
+      # ৪. কার্নেল কনফিগারেশন, CPU/GPU বুস্ট ও সমস্ত ড্রাইভার ইনজেকশন
+      - name: Configure Titan OC NetHunter Drivers via Official Kernel Engine
         run: |
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.lex.c_shipped || true
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.l || true
-          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Ultimate-v1.0"/' kernel/arch/arm64/configs/m11q_open_defconfig
+          
+          # কাস্টম পাওয়ারফুল কার্নেল নাম (Powered by Plabon)
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Titan-OC-by-Plabon"/' kernel/arch/arm64/configs/m11q_open_defconfig
 
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           export HOSTCFLAGS="-fcommon"
@@ -114,7 +116,16 @@ jobs:
 
           make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" m11q_open_defconfig
 
-          # [1] Core System & Chroot (SysV IPC, Namespaces)
+          # [১] CPU & GPU Overclock & Performance Tuning
+          ./scripts/config --file out/.config --enable CONFIG_CPU_FREQ_GOV_PERFORMANCE
+          ./scripts/config --file out/.config --enable CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+          ./scripts/config --file out/.config --enable CONFIG_CPU_BOOST
+          ./scripts/config --file out/.config --enable CONFIG_BIG_CLUSTER_MIN_FREQ_ADJUST
+          ./scripts/config --file out/.config --enable CONFIG_DEVFREQ_GOV_PERFORMANCE
+          ./scripts/config --file out/.config --enable CONFIG_DEVFREQ_GOV_QCOM_ADRENO_TZ
+          ./scripts/config --file out/.config --enable CONFIG_DEVFREQ_GOV_QCOM_GPUBW_MON
+
+          # [২] Core System & Chroot (SysV IPC, Namespaces, Root)
           ./scripts/config --file out/.config --enable CONFIG_KSU
           ./scripts/config --file out/.config --enable CONFIG_SYSVIPC
           ./scripts/config --file out/.config --enable CONFIG_SYSVIPC_SYSCTL
@@ -132,14 +143,14 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_IKCONFIG
           ./scripts/config --file out/.config --enable CONFIG_IKCONFIG_PROC
 
-          # [2] Bluetooth Classic, LE & External USB BT HCI Dongles
+          # [৩] Bluetooth Classic, LE & External USB BT HCI Dongles
           ./scripts/config --file out/.config --enable CONFIG_BT
           ./scripts/config --file out/.config --enable CONFIG_BT_BREDR
           ./scripts/config --file out/.config --enable CONFIG_BT_LE
           ./scripts/config --file out/.config --enable CONFIG_BT_HCIBTUSB
           ./scripts/config --file out/.config --enable CONFIG_BT_HCIUART
 
-          # [3] Wireless Engine (MAC80211, CFG80211, Crypto)
+          # [৪] Wireless Engine (MAC80211, CFG80211, Crypto)
           ./scripts/config --file out/.config --enable CONFIG_NETDEVICES
           ./scripts/config --file out/.config --enable CONFIG_WLAN
           ./scripts/config --file out/.config --enable CONFIG_WIRELESS
@@ -156,7 +167,7 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_CRYPTO_CCM
           ./scripts/config --file out/.config --enable CONFIG_CRYPTO_GCM
 
-          # [4] External WiFi Vendor Gates & Chipsets
+          # [৫] All External WiFi Drivers (Atheros, Ralink, Realtek, MediaTek)
           ./scripts/config --file out/.config --enable CONFIG_WLAN_VENDOR_ATH
           ./scripts/config --file out/.config --enable CONFIG_ATH_CARDS
           ./scripts/config --file out/.config --enable CONFIG_ATH9K_HTC
@@ -175,13 +186,20 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_RTL8XXXU
           ./scripts/config --file out/.config --enable CONFIG_R8188EU
 
-          # [5] USB HID & BadUSB / LAN
+          # [৬] USB HID, BadUSB & USB Ethernet
           ./scripts/config --file out/.config --enable CONFIG_USB_CONFIGFS_F_HID
           ./scripts/config --file out/.config --enable CONFIG_UHID
           ./scripts/config --file out/.config --enable CONFIG_USB_HID
           ./scripts/config --file out/.config --enable CONFIG_USB_USBNET
           ./scripts/config --file out/.config --enable CONFIG_USB_NET_AX8817X
           ./scripts/config --file out/.config --enable CONFIG_USB_RTL8152
+
+          # [৭] SDR, DriveDroid & CAN Bus
+          ./scripts/config --file out/.config --enable CONFIG_MEDIA_SDR_SUPPORT
+          ./scripts/config --file out/.config --enable CONFIG_DVB_RTL2832_SDR
+          ./scripts/config --file out/.config --enable CONFIG_USB_HACKRF
+          ./scripts/config --file out/.config --enable CONFIG_CDROM_PKTCDVD
+          ./scripts/config --file out/.config --enable CONFIG_CAN
 
           make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" olddefconfig
 
@@ -202,14 +220,19 @@ jobs:
                HOSTCFLAGS="-fcommon" \
                HOSTCXXFLAGS="-fcommon"
 
-      # ৬. বিশেষ RTL8188FU (0bda:f179) ড্রাইভার ও ফার্মওয়্যার কম্পাইলেশন
+      # ৬. বিশেষ RTL8188FU (0bda:f179) ড্রাইভার কম্পাইলেশন (৪.৯ কার্নেল প্যাচ সহ)
       - name: Build and Package Dedicated RTL8188FU (0bda:f179) Driver
         run: |
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           git clone https://github.com/kelebek333/rtl8188fu rtl8188fu
           cd rtl8188fu
+          
+          # Linux 4.9 কার্নেল ফাংশন প্যাচ (cfg80211_roamed এরর ফিক্স)
           sed -i 's/CONFIG_POWER_SAVING = y/CONFIG_POWER_SAVING = n/' Makefile
           sed -i 's/CONFIG_WIFI_MONITOR = n/CONFIG_WIFI_MONITOR = y/' Makefile
+          sed -i 's/KERNEL_VERSION(4, 12, 0)/KERNEL_VERSION(4, 9, 0)/g' os_dep/linux/ioctl_cfg80211.c
+          sed -i 's/KERNEL_VERSION(4, 10, 0)/KERNEL_VERSION(4, 9, 0)/g' os_dep/linux/ioctl_cfg80211.c || true
+          
           make -j$(nproc --all) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KSRC=../kernel/out modules
           cd ..
           
@@ -221,11 +244,11 @@ jobs:
         run: |
           cd AnyKernel3
           cp ../kernel/out/arch/arm64/boot/Image.gz-dtb . || cp ../kernel/out/arch/arm64/boot/Image.gz . || cp ../kernel/out/arch/arm64/boot/Image .
-          zip -r9 ../Kali-NetHunter-Ultimate-M11-Master.zip * -x .git README.md *placeholder
+          zip -r9 ../Kali-NetHunter-Titan-M11-Master.zip * -x .git README.md *placeholder
 
       # ৮. আউটপুট আপলোড
       - name: Upload Master Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kali-NetHunter-Ultimate-M11-Master
-          path: Kali-NetHunter-Ultimate-M11-Master.zip
+          name: Kali-NetHunter-Titan-M11-Master
+          path: Kali-NetHunter-Titan-M11-Master.zip
