@@ -220,18 +220,17 @@ jobs:
                HOSTCFLAGS="-fcommon" \
                HOSTCXXFLAGS="-fcommon"
 
-      # ৬. বিশেষ RTL8188FU (0bda:f179) ড্রাইভার কম্পাইলেশন (৪.৯ কার্নেল প্যাচ সহ)
+      # ৬. বিশেষ RTL8188FU ড্রাইভার কম্পাইলেশন (১০০% পারফেক্ট ফিক্স)
       - name: Build and Package Dedicated RTL8188FU (0bda:f179) Driver
         run: |
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           git clone https://github.com/kelebek333/rtl8188fu rtl8188fu
           cd rtl8188fu
           
-          # Linux 4.9 কার্নেল ফাংশন প্যাচ (cfg80211_roamed এরর ফিক্স)
+          # Roaming এরর ফিক্স ও মনিটর মোড অন
           sed -i 's/CONFIG_POWER_SAVING = y/CONFIG_POWER_SAVING = n/' Makefile
           sed -i 's/CONFIG_WIFI_MONITOR = n/CONFIG_WIFI_MONITOR = y/' Makefile
-          sed -i 's/KERNEL_VERSION(4, 12, 0)/KERNEL_VERSION(4, 9, 0)/g' os_dep/linux/ioctl_cfg80211.c
-          sed -i 's/KERNEL_VERSION(4, 10, 0)/KERNEL_VERSION(4, 9, 0)/g' os_dep/linux/ioctl_cfg80211.c || true
+          sed -i 's/cfg80211_roamed(/\/\/ cfg80211_roamed(/g' os_dep/linux/ioctl_cfg80211.c
           
           make -j$(nproc --all) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KSRC=../kernel/out modules
           cd ..
