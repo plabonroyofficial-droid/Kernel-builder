@@ -1,0 +1,231 @@
+name: Build Kali NetHunter Ultimate Master Kernel (Fixed KSU & RTL8188FU)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Setup Build Environment & Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential bc bison flex libssl-dev libncurses5-dev \
+                              libelf-dev libfl-dev git ccache zip curl libtinfo5
+
+      # ১. কম্পাইলার ক্লোন (AOSP GCC 4.9)
+      - name: Clone AOSP GCC 4.9 Toolchains
+        run: |
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 -b lineage-19.1 gcc64
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 -b lineage-19.1 gcc32
+
+      # ২. কার্নেল সোর্স কোড ক্লোন
+      - name: Clone Samsung M11 Kernel Source
+        run: |
+          git clone https://github.com/ifoodplayer/android_kernel_samsung_sdm450 kernel
+          cd kernel
+          git checkout 182f7ee || true
+          
+          # KernelSU Next v2 Signature ফিক্স (ম্যানেজার 12851-এর জন্য লেটেস্ট ড্রাইভার আপডেট)
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash - || true
+          cd ..
+          
+      # ৩. AnyKernel3 অটোমেশন (Auto Driver & Firmware Installer সহ)
+      - name: Setup Pre-Configured AnyKernel3
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
+          cat << 'EOF' > AnyKernel3/anykernel.sh
+          ### AnyKernel3 Ramdisk Mod Script
+          ## Custom NetHunter Edition by Plabon Roy
+
+          properties() { '
+          kernel.string=Kali NetHunter Ultimate v1.0 by Plabon Roy
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=0
+          do.cleanup=1
+          do.cleanuponabort=1
+          device.name1=sdm450
+          device.name2=m11q
+          device.name3=a11q
+          '; }
+
+          boot_attributes() {
+          set_perm_recursive 0 0 755 644 $RAMDISK/*;
+          set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
+          }
+
+          BLOCK=/dev/block/by-name/boot;
+          IS_SLOT_DEVICE=0;
+          RAMDISK_COMPRESSION=auto;
+          PATCH_VBMETA_FLAG=auto;
+
+          . tools/ak3-core.sh;
+
+          ui_print " ";
+          ui_print "============================================";
+          ui_print "   KALI NETHUNTER ULTIMATE MASTER KERNEL    ";
+          ui_print "        For Galaxy M11/A11 (SDM450)         ";
+          ui_print "============================================";
+          ui_print " [•] Lead Developer : Plabon Roy";
+          ui_print " [•] GitHub Profile : github.com/plabonroyofficial";
+          ui_print " [•] Kernel Build   : Linux 4.9.186 NetHunter";
+          ui_print " [•] Capabilities   : WiFi Injection | BadUSB | BT";
+          ui_print "============================================";
+          ui_print " ";
+
+          dump_boot;
+
+          ui_print " [•] Patching Boot Image...";
+          ui_print " [•] Injecting NetHunter Kernel Binary...";
+
+          write_boot;
+
+          # RTL8188FU Driver Module & Firmware Auto-Install
+          ui_print " [•] Installing RTL8188FU Driver & Firmware...";
+          mount -o rw,remount /vendor 2>/dev/null || true
+          mount -o rw,remount /system 2>/dev/null || true
+          mkdir -p /vendor/lib/modules /vendor/firmware/rtlwifi /etc/firmware/rtlwifi /lib/firmware/rtlwifi
+          cp -f /tmp/anykernel/rtl8188fu.ko /vendor/lib/modules/ 2>/dev/null || true
+          cp -f /tmp/anykernel/rtl8188fufw.bin /vendor/firmware/rtlwifi/ 2>/dev/null || true
+          cp -f /tmp/anykernel/rtl8188fufw.bin /etc/firmware/rtlwifi/ 2>/dev/null || true
+          cp -f /tmp/anykernel/rtl8188fufw.bin /lib/firmware/rtlwifi/ 2>/dev/null || true
+
+          ui_print " ";
+          ui_print "============================================";
+          ui_print "   FLASH COMPLETE! ENJOY KALI NETHUNTER!    ";
+          ui_print "============================================";
+          ui_print " ";
+          EOF
+
+      # ৪. কার্নেল কনফিগারেশন এবং ১০০% ড্রাইভার ইনজেকশন
+      - name: Configure Master NetHunter Drivers via Official Kernel Engine
+        run: |
+          sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.lex.c_shipped || true
+          sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.l || true
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Ultimate-v1.0"/' kernel/arch/arm64/configs/m11q_open_defconfig
+
+          export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
+          export HOSTCFLAGS="-fcommon"
+          export HOSTCXXFLAGS="-fcommon"
+          cd kernel
+          export ARCH=arm64
+          export SUBARCH=arm64
+
+          make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" m11q_open_defconfig
+
+          # [1] Core System & Chroot (SysV IPC, Namespaces)
+          ./scripts/config --file out/.config --enable CONFIG_KSU
+          ./scripts/config --file out/.config --enable CONFIG_SYSVIPC
+          ./scripts/config --file out/.config --enable CONFIG_SYSVIPC_SYSCTL
+          ./scripts/config --file out/.config --enable CONFIG_POSIX_MQUEUE
+          ./scripts/config --file out/.config --enable CONFIG_POSIX_MQUEUE_SYSCTL
+          ./scripts/config --file out/.config --enable CONFIG_CROSS_MEMORY_ATTACH
+          ./scripts/config --file out/.config --enable CONFIG_NAMESPACES
+          ./scripts/config --file out/.config --enable CONFIG_UTS_NS
+          ./scripts/config --file out/.config --enable CONFIG_IPC_NS
+          ./scripts/config --file out/.config --enable CONFIG_USER_NS
+          ./scripts/config --file out/.config --enable CONFIG_PID_NS
+          ./scripts/config --file out/.config --enable CONFIG_NET_NS
+          ./scripts/config --file out/.config --enable CONFIG_DEVTMPFS
+          ./scripts/config --file out/.config --enable CONFIG_DEVTMPFS_MOUNT
+          ./scripts/config --file out/.config --enable CONFIG_IKCONFIG
+          ./scripts/config --file out/.config --enable CONFIG_IKCONFIG_PROC
+
+          # [2] Bluetooth Classic, LE & External USB BT HCI Dongles
+          ./scripts/config --file out/.config --enable CONFIG_BT
+          ./scripts/config --file out/.config --enable CONFIG_BT_BREDR
+          ./scripts/config --file out/.config --enable CONFIG_BT_LE
+          ./scripts/config --file out/.config --enable CONFIG_BT_HCIBTUSB
+          ./scripts/config --file out/.config --enable CONFIG_BT_HCIUART
+
+          # [3] Wireless Engine (MAC80211, CFG80211, Crypto)
+          ./scripts/config --file out/.config --enable CONFIG_NETDEVICES
+          ./scripts/config --file out/.config --enable CONFIG_WLAN
+          ./scripts/config --file out/.config --enable CONFIG_WIRELESS
+          ./scripts/config --file out/.config --enable CONFIG_WIRELESS_EXT
+          ./scripts/config --file out/.config --enable CONFIG_CFG80211
+          ./scripts/config --file out/.config --enable CONFIG_CFG80211_WEXT
+          ./scripts/config --file out/.config --enable CONFIG_LIB80211
+          ./scripts/config --file out/.config --enable CONFIG_MAC80211
+          ./scripts/config --file out/.config --enable CONFIG_MAC80211_RC_DEFAULT_MINSTREL
+          ./scripts/config --file out/.config --set-str CONFIG_MAC80211_RC_DEFAULT "minstrel_ht"
+          ./scripts/config --file out/.config --enable CONFIG_MAC80211_LEDS
+          ./scripts/config --file out/.config --enable CONFIG_CRYPTO_ARC4
+          ./scripts/config --file out/.config --enable CONFIG_CRYPTO_AES
+          ./scripts/config --file out/.config --enable CONFIG_CRYPTO_CCM
+          ./scripts/config --file out/.config --enable CONFIG_CRYPTO_GCM
+
+          # [4] External WiFi Vendor Gates & Chipsets
+          ./scripts/config --file out/.config --enable CONFIG_WLAN_VENDOR_ATH
+          ./scripts/config --file out/.config --enable CONFIG_ATH_CARDS
+          ./scripts/config --file out/.config --enable CONFIG_ATH9K_HTC
+          ./scripts/config --file out/.config --enable CONFIG_CARL9170
+
+          ./scripts/config --file out/.config --enable CONFIG_WLAN_VENDOR_RALINK
+          ./scripts/config --file out/.config --enable CONFIG_RT2X00
+          ./scripts/config --file out/.config --enable CONFIG_RT2800USB
+          ./scripts/config --file out/.config --enable CONFIG_WLAN_VENDOR_MEDIATEK
+          ./scripts/config --file out/.config --enable CONFIG_MT7601U
+
+          ./scripts/config --file out/.config --enable CONFIG_WLAN_VENDOR_REALTEK
+          ./scripts/config --file out/.config --enable CONFIG_RTL_CARDS
+          ./scripts/config --file out/.config --enable CONFIG_RTL8187
+          ./scripts/config --file out/.config --enable CONFIG_RTL8192CU
+          ./scripts/config --file out/.config --enable CONFIG_RTL8XXXU
+          ./scripts/config --file out/.config --enable CONFIG_R8188EU
+
+          # [5] USB HID & BadUSB / LAN
+          ./scripts/config --file out/.config --enable CONFIG_USB_CONFIGFS_F_HID
+          ./scripts/config --file out/.config --enable CONFIG_UHID
+          ./scripts/config --file out/.config --enable CONFIG_USB_HID
+          ./scripts/config --file out/.config --enable CONFIG_USB_USBNET
+          ./scripts/config --file out/.config --enable CONFIG_USB_NET_AX8817X
+          ./scripts/config --file out/.config --enable CONFIG_USB_RTL8152
+
+          make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" olddefconfig
+
+      # ৫. সম্পূর্ণ মাস্টার কার্নেল কম্পাইলেশন
+      - name: Compile Ultimate NetHunter Kernel
+        run: |
+          export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
+          export HOSTCFLAGS="-fcommon"
+          export HOSTCXXFLAGS="-fcommon"
+          cd kernel
+          export ARCH=arm64
+          export SUBARCH=arm64
+          
+          make -j$(nproc --all) O=out \
+               ARCH=arm64 \
+               CROSS_COMPILE=aarch64-linux-android- \
+               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+               HOSTCFLAGS="-fcommon" \
+               HOSTCXXFLAGS="-fcommon"
+
+      # ৬. বিশেষ RTL8188FU (0bda:f179) ড্রাইভার ও ফার্মওয়্যার কম্পাইলেশন
+      - name: Build and Package Dedicated RTL8188FU (0bda:f179) Driver
+        run: |
+          export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
+          git clone https://github.com/kelebek333/rtl8188fu rtl8188fu
+          cd rtl8188fu
+          sed -i 's/CONFIG_POWER_SAVING = y/CONFIG_POWER_SAVING = n/' Makefile
+          sed -i 's/CONFIG_WIFI_MONITOR = n/CONFIG_WIFI_MONITOR = y/' Makefile
+          make -j$(nproc --all) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KSRC=../kernel/out modules
+          cd ..
+          
+          cp rtl8188fu/rtl8188fu.ko AnyKernel3/
+          cp rtl8188fu/firmware/rtl8188fufw.bin AnyKernel3/
+
+      # ৭. রেডিমেড ফ্ল্যাশেবল জিপ তৈরি
+      - name: Package Ready-To-Flash NetHunter Zip
+        run: |
+          cd AnyKernel3
+          cp ../kernel/out/arch/arm64/boot/Image.gz-dtb . || cp ../kernel/out/arch/arm64/boot/Image.gz . || cp ../kernel/out/arch/arm64/boot/Image .
+          zip -r9 ../Kali-NetHunter-Ultimate-M11-Master.zip * -x .git README.md *placeholder
+
+      # ৮. আউটপুট আপলোড
+      - name: Upload Master Kernel Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kali-NetHunter-Ultimate-M11-Master
+          path: Kali-NetHunter-Ultimate-M11-Master.zip
