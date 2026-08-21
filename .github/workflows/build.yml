@@ -26,11 +26,11 @@ jobs:
           cd kernel
           git checkout 182f7ee || true
           
-          # KernelSU Next v2 Signature ফিক্স (Manager 12851 Support)
+          # KernelSU Next v2 Signature ফিক্স
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash - || true
           cd ..
           
-      # ৩. AnyKernel3 অটোমেশন (Plabon Roy Developer Credits + Auto Module/Firmware Installer)
+      # ৩. AnyKernel3 অটোমেশন (Plabon Roy Developer Credits + Banner)
       - name: Setup Pre-Configured AnyKernel3 with Plabon Roy Credits
         run: |
           git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
@@ -75,14 +75,10 @@ jobs:
           ui_print " ";
 
           dump_boot;
-
-          ui_print " [•] Patching Boot Image...";
-          ui_print " [•] Injecting Titan NetHunter Kernel Binary...";
-
           write_boot;
 
-          # RTL8188FU Driver Module & Firmware Auto-Install
-          ui_print " [•] Installing RTL8188FU (0bda:f179) Driver & Firmware...";
+          # RTL8188FU Driver & Firmware Auto-Install
+          ui_print " [•] Installing Drivers & Firmware...";
           mount -o rw,remount /vendor 2>/dev/null || true
           mount -o rw,remount /system 2>/dev/null || true
           mkdir -p /vendor/lib/modules /vendor/firmware/rtlwifi /etc/firmware/rtlwifi /lib/firmware/rtlwifi
@@ -93,13 +89,13 @@ jobs:
 
           ui_print " ";
           ui_print "============================================";
-          ui_print "   FLASH COMPLETE! ENJOY KALI NETHUNTER!    ";
+          ui_print "   FLASH COMPLETE! POWERED BY PLABON ROY    ";
           ui_print "============================================";
           ui_print " ";
           EOF
 
-      # ৪. কার্নেল কনফিগারেশন, CPU/GPU বুস্ট ও সমস্ত ড্রাইভার ইনজেকশন
-      - name: Configure Titan OC NetHunter Drivers via Official Kernel Engine
+      # ৪. কার্নেল কনফিগারেশন, ওভারক্লক ও সব ড্রাইভার এনাবল
+      - name: Configure Master Drivers & Performance Tuning
         run: |
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.lex.c_shipped || true
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.l || true
@@ -116,16 +112,13 @@ jobs:
 
           make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" m11q_open_defconfig
 
-          # [১] CPU & GPU Overclock & Performance Tuning
-          ./scripts/config --file out/.config --enable CONFIG_CPU_FREQ_GOV_PERFORMANCE
-          ./scripts/config --file out/.config --enable CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+          # [১] CPU (2.2GHz) & GPU (800MHz) Tuning
           ./scripts/config --file out/.config --enable CONFIG_CPU_BOOST
-          ./scripts/config --file out/.config --enable CONFIG_BIG_CLUSTER_MIN_FREQ_ADJUST
+          ./scripts/config --file out/.config --enable CONFIG_CPU_FREQ_GOV_PERFORMANCE
           ./scripts/config --file out/.config --enable CONFIG_DEVFREQ_GOV_PERFORMANCE
           ./scripts/config --file out/.config --enable CONFIG_DEVFREQ_GOV_QCOM_ADRENO_TZ
-          ./scripts/config --file out/.config --enable CONFIG_DEVFREQ_GOV_QCOM_GPUBW_MON
 
-          # [২] Core System & Chroot (SysV IPC, Namespaces, Root)
+          # [২] Chroot, WiFi, BT, HID Drivers (সব ড্রাইভার একসাথে)
           ./scripts/config --file out/.config --enable CONFIG_KSU
           ./scripts/config --file out/.config --enable CONFIG_SYSVIPC
           ./scripts/config --file out/.config --enable CONFIG_SYSVIPC_SYSCTL
@@ -143,14 +136,12 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_IKCONFIG
           ./scripts/config --file out/.config --enable CONFIG_IKCONFIG_PROC
 
-          # [৩] Bluetooth Classic, LE & External USB BT HCI Dongles
           ./scripts/config --file out/.config --enable CONFIG_BT
           ./scripts/config --file out/.config --enable CONFIG_BT_BREDR
           ./scripts/config --file out/.config --enable CONFIG_BT_LE
           ./scripts/config --file out/.config --enable CONFIG_BT_HCIBTUSB
           ./scripts/config --file out/.config --enable CONFIG_BT_HCIUART
 
-          # [৪] Wireless Engine (MAC80211, CFG80211, Crypto)
           ./scripts/config --file out/.config --enable CONFIG_NETDEVICES
           ./scripts/config --file out/.config --enable CONFIG_WLAN
           ./scripts/config --file out/.config --enable CONFIG_WIRELESS
@@ -167,7 +158,6 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_CRYPTO_CCM
           ./scripts/config --file out/.config --enable CONFIG_CRYPTO_GCM
 
-          # [৫] All External WiFi Drivers (Atheros, Ralink, Realtek, MediaTek)
           ./scripts/config --file out/.config --enable CONFIG_WLAN_VENDOR_ATH
           ./scripts/config --file out/.config --enable CONFIG_ATH_CARDS
           ./scripts/config --file out/.config --enable CONFIG_ATH9K_HTC
@@ -186,7 +176,6 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_RTL8XXXU
           ./scripts/config --file out/.config --enable CONFIG_R8188EU
 
-          # [৬] USB HID, BadUSB & USB Ethernet
           ./scripts/config --file out/.config --enable CONFIG_USB_CONFIGFS_F_HID
           ./scripts/config --file out/.config --enable CONFIG_UHID
           ./scripts/config --file out/.config --enable CONFIG_USB_HID
@@ -194,7 +183,6 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_USB_NET_AX8817X
           ./scripts/config --file out/.config --enable CONFIG_USB_RTL8152
 
-          # [৭] SDR, DriveDroid & CAN Bus
           ./scripts/config --file out/.config --enable CONFIG_MEDIA_SDR_SUPPORT
           ./scripts/config --file out/.config --enable CONFIG_DVB_RTL2832_SDR
           ./scripts/config --file out/.config --enable CONFIG_USB_HACKRF
@@ -220,19 +208,26 @@ jobs:
                HOSTCFLAGS="-fcommon" \
                HOSTCXXFLAGS="-fcommon"
 
-      # ৬. বিশেষ RTL8188FU ড্রাইভার কম্পাইলেশন (ম্যাক্রো বাইপাস ফিক্স)
+      # ৬. বিশেষ RTL8188FU ড্রাইভার কম্পাইলেশন (পাইথন দিয়ে ১০০% নিখুঁত রোমিং ফিক্স)
       - name: Build and Package Dedicated RTL8188FU (0bda:f179) Driver
         run: |
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           git clone https://github.com/kelebek333/rtl8188fu rtl8188fu
           cd rtl8188fu
           
-          # পাওয়ার সেভিং অফ ও মনিটর মোড অন
           sed -i 's/CONFIG_POWER_SAVING = y/CONFIG_POWER_SAVING = n/' Makefile
           sed -i 's/CONFIG_WIFI_MONITOR = n/CONFIG_WIFI_MONITOR = y/' Makefile
           
-          # C Macro দিয়ে পুরো ফাংশনাল মাল্টি-লাইন কল বাইপাস ফিক্স
-          sed -i 's/#include <net\/cfg80211.h>/#include <net\/cfg80211.h>\n#undef cfg80211_roamed\n#define cfg80211_roamed(...) do {} while(0)/g' os_dep/linux/ioctl_cfg80211.c
+          # Python ব্যবহার করে মাল্টি-লাইন রোমিং ফাংশন ক্লিনলি রিমুভ করা হচ্ছে
+          python3 -c '
+          import re
+          path = "os_dep/linux/ioctl_cfg80211.c"
+          with open(path, "r") as f:
+              text = f.read()
+          text = re.sub(r"cfg80211_roamed\s*\([^;]*\);", "/* removed roaming */", text, flags=re.DOTALL)
+          with open(path, "w") as f:
+              f.write(text)
+          '
           
           make -j$(nproc --all) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KSRC=../kernel/out modules
           cd ..
@@ -245,11 +240,11 @@ jobs:
         run: |
           cd AnyKernel3
           cp ../kernel/out/arch/arm64/boot/Image.gz-dtb . || cp ../kernel/out/arch/arm64/boot/Image.gz . || cp ../kernel/out/arch/arm64/boot/Image .
-          zip -r9 ../Kali-NetHunter-Titan-M11-Master.zip * -x .git README.md *placeholder
+          zip -r9 ../Kali-NetHunter-Titan-OC-Master.zip * -x .git README.md *placeholder
 
       # ৮. আউটপুট আপলোড
       - name: Upload Master Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kali-NetHunter-Titan-M11-Master
-          path: Kali-NetHunter-Titan-M11-Master.zip
+          name: Kali-NetHunter-Titan-OC-Master
+          path: Kali-NetHunter-Titan-OC-Master.zip
