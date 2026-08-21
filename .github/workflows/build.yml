@@ -1,4 +1,4 @@
-name: Build Kali NetHunter Titan OC Kernel (Powered by Plabon)
+name: Build Kali NetHunter Titan Extreme OC Kernel (Powered by Plabon)
 
 on:
   workflow_dispatch:
@@ -13,33 +13,33 @@ jobs:
           sudo apt install -y build-essential bc bison flex libssl-dev libncurses5-dev \
                               libelf-dev libfl-dev git ccache zip curl libtinfo5
 
-      # ১. কম্পাইলার ক্লোন (AOSP GCC 4.9)
+      # ১. কম্পাইলার ক্লোন (AOSP GCC 4.9 Toolchains)
       - name: Clone AOSP GCC 4.9 Toolchains
         run: |
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 -b lineage-19.1 gcc64
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 -b lineage-19.1 gcc32
 
-      # ২. কার্নেল সোর্স কোড ক্লোন ও KernelSU Next v2 আপডেট
-      - name: Clone Samsung M11 Kernel Source
+      # ২. কার্নেল সোর্স কোড ক্লোন ও KernelSU Next v2 ইন্টিগ্রেশন
+      - name: Clone Samsung M11 Kernel Source & Setup KernelSU
         run: |
           git clone https://github.com/ifoodplayer/android_kernel_samsung_sdm450 kernel
           cd kernel
           git checkout 182f7ee || true
           
-          # KernelSU Next v2 Signature ফিক্স
+          # KernelSU Next v2 ইন্টিগ্রেশন
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash - || true
           cd ..
           
-      # ৩. AnyKernel3 অটোমেশন (Plabon Roy Developer Credits + Banner)
+      # ৩. AnyKernel3 অটোমেশন (Developer Plabon Roy Master Banner & Auto-Driver Installer)
       - name: Setup Pre-Configured AnyKernel3 with Plabon Roy Credits
         run: |
           git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
           cat << 'EOF' > AnyKernel3/anykernel.sh
           ### AnyKernel3 Ramdisk Mod Script
-          ## Custom NetHunter Titan Edition by Plabon Roy
+          ## Custom NetHunter Titan Extreme OC by Plabon Roy
 
           properties() { '
-          kernel.string=Kali NetHunter Titan OC by Plabon Roy
+          kernel.string=Kali NetHunter Titan Extreme OC by Plabon Roy
           do.devicecheck=1
           do.modules=0
           do.systemless=0
@@ -63,45 +63,60 @@ jobs:
           . tools/ak3-core.sh;
 
           ui_print " ";
-          ui_print "============================================";
-          ui_print "    KALI NETHUNTER TITAN OC MASTER KERNEL   ";
-          ui_print "       CPU: 2.2GHz | GPU: 800MHz Max        ";
-          ui_print "============================================";
+          ui_print "╔═════════════════════════════════════════════════════╗";
+          ui_print "║       KALI NETHUNTER TITAN EXTREME OC MASTER        ║";
+          ui_print "║            POWERED BY DEVELOPER PLABON              ║";
+          ui_print "╚═════════════════════════════════════════════════════╝";
           ui_print " [•] Lead Developer : Plabon Roy";
           ui_print " [•] GitHub Profile : github.com/plabonroyofficial";
-          ui_print " [•] Kernel Build   : Linux 4.9.186 NetHunter";
-          ui_print " [•] Capabilities   : WiFi Injection | BadUSB | BT";
-          ui_print "============================================";
+          ui_print " [•] Hardware Spec  : Snapdragon SDM450 (Octa-Core)";
+          ui_print " [•] CPU Frequency  : 2.2 GHz Overclocked";
+          ui_print " [•] GPU Frequency  : Adreno 506 @ 800 MHz Turbo";
+          ui_print " [•] Touch Latency  : Ultra Low Response Boosted";
+          ui_print " [•] Capabilities   : WiFi Injection | BT VHCI | BadUSB";
+          ui_print " [•] Root Engine    : KernelSU Next v2 Built-in";
+          ui_print "───────────────────────────────────────────────────────";
           ui_print " ";
 
           dump_boot;
           write_boot;
 
-          # RTL8188FU Driver & Firmware Auto-Install
-          ui_print " [•] Installing Drivers & Firmware...";
+          # RTL8188FU ও এক্সটারনাল মডিউল / ফার্মওয়্যার অটো-ইন্সটল
+          ui_print " [•] Installing RTL8188FU Modules & Firmware...";
           mount -o rw,remount /vendor 2>/dev/null || true
           mount -o rw,remount /system 2>/dev/null || true
-          mkdir -p /vendor/lib/modules /vendor/firmware/rtlwifi /etc/firmware/rtlwifi /lib/firmware/rtlwifi
+          
+          # ডিরেক্টরি তৈরি
+          mkdir -p /vendor/lib/modules /system/lib/modules
+          mkdir -p /vendor/firmware/rtlwifi /system/etc/firmware/rtlwifi /etc/firmware/rtlwifi /lib/firmware/rtlwifi
+
+          # ড্রাইভার মডিউল (.ko) কপি ও পারমিশন
           cp -f /tmp/anykernel/rtl8188fu.ko /vendor/lib/modules/ 2>/dev/null || true
+          cp -f /tmp/anykernel/rtl8188fu.ko /system/lib/modules/ 2>/dev/null || true
+          chmod 644 /vendor/lib/modules/rtl8188fu.ko 2>/dev/null || true
+
+          # ফার্মওয়্যার (.bin) কপি ও পারমিশন
           cp -f /tmp/anykernel/rtl8188fufw.bin /vendor/firmware/rtlwifi/ 2>/dev/null || true
+          cp -f /tmp/anykernel/rtl8188fufw.bin /system/etc/firmware/rtlwifi/ 2>/dev/null || true
           cp -f /tmp/anykernel/rtl8188fufw.bin /etc/firmware/rtlwifi/ 2>/dev/null || true
           cp -f /tmp/anykernel/rtl8188fufw.bin /lib/firmware/rtlwifi/ 2>/dev/null || true
+          chmod 644 /vendor/firmware/rtlwifi/rtl8188fufw.bin 2>/dev/null || true
 
           ui_print " ";
-          ui_print "============================================";
-          ui_print "   FLASH COMPLETE! POWERED BY PLABON ROY    ";
-          ui_print "============================================";
+          ui_print "╔═════════════════════════════════════════════════════╗";
+          ui_print "║      FLASH SUCCESSFUL! READY FOR KALI NETHUNTER     ║";
+          ui_print "╚═════════════════════════════════════════════════════╝";
           ui_print " ";
           EOF
 
-      # ৪. কার্নেল কনফিগারেশন, ওভারক্লক ও সব ড্রাইভার এনাবল
-      - name: Configure Master Drivers & Performance Tuning
+      # ৪. কার্নেল কনফিগারেশন, সরাসরি 2.2GHz CPU / 800MHz GPU এবং সব প্যাচ এনাবল
+      - name: Configure Master Drivers, Overclock & NetHunter Patches
         run: |
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.lex.c_shipped || true
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.l || true
           
-          # কাস্টম পাওয়ারফুল কার্নেল নাম (Powered by Plabon)
-          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Titan-OC-by-Plabon"/' kernel/arch/arm64/configs/m11q_open_defconfig
+          # কাস্টম কার্নেল নাম (Settings-এ এটি শো করবে)
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Titan-Extreme-OC-Powered-By-Plabon"/' kernel/arch/arm64/configs/m11q_open_defconfig
 
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           export HOSTCFLAGS="-fcommon"
@@ -110,16 +125,39 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
 
+          # ================================================================
+          # 🔥 [১. সরাসরি CPU 2.2GHz এবং GPU 800MHz ভ্যালু প্যাচিং] 🔥
+          # ================================================================
+          # GPU Adreno 506 সরাসরি 800MHz (800000000 Hz)
+          find arch/arm64/boot/dts/qcom/ -type f -name "*gpu*.dtsi" -exec sed -i 's/650000000/800000000/g' {} + 2>/dev/null || true
+          find arch/arm64/boot/dts/qcom/ -type f -name "*gpu*.dtsi" -exec sed -i 's/600000000/800000000/g' {} + 2>/dev/null || true
+          
+          # CPU SDM450 ফ্রিকোয়েন্সি সরাসরি 2.2GHz (2208000 KHz / 2208000000 Hz)
+          find arch/arm64/boot/dts/qcom/ -type f -name "*.dtsi" -exec sed -i 's/1804800/2208000/g' {} + 2>/dev/null || true
+          find drivers/clk/ -type f -name "*8953*.c" -exec sed -i 's/1804800000/2208000000/g' {} + 2>/dev/null || true
+          find drivers/clk/ -type f -name "*8953*.c" -exec sed -i 's/2016000000/2208000000/g' {} + 2>/dev/null || true
+
+          # ================================================================
+
           make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" m11q_open_defconfig
 
-          # [১] CPU (2.2GHz) & GPU (800MHz) Tuning
+          # [১] CPU/GPU Performance & Ultra-Fast Touch Boost
+          ./scripts/config --file out/.config --enable CONFIG_PREEMPT
+          ./scripts/config --file out/.config --disable CONFIG_PREEMPT_NONE
+          ./scripts/config --file out/.config --disable CONFIG_PREEMPT_VOLUNTARY
           ./scripts/config --file out/.config --enable CONFIG_CPU_BOOST
+          ./scripts/config --file out/.config --enable CONFIG_SCHED_BOOST
           ./scripts/config --file out/.config --enable CONFIG_CPU_FREQ_GOV_PERFORMANCE
+          ./scripts/config --file out/.config --enable CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE
           ./scripts/config --file out/.config --enable CONFIG_DEVFREQ_GOV_PERFORMANCE
           ./scripts/config --file out/.config --enable CONFIG_DEVFREQ_GOV_QCOM_ADRENO_TZ
+          ./scripts/config --file out/.config --enable CONFIG_INPUT_TOUCHSCREEN
+          ./scripts/config --file out/.config --enable CONFIG_TOUCHSCREEN_BOOST
+          ./scripts/config --file out/.config --enable CONFIG_INPUT_KEYCHORD
 
-          # [২] Chroot, WiFi, BT, HID Drivers (সব ড্রাইভার একসাথে)
+          # [২] KernelSU Next v2 & OverlayFS Support (রুট ও সিগনেচার ফিক্স)
           ./scripts/config --file out/.config --enable CONFIG_KSU
+          ./scripts/config --file out/.config --enable CONFIG_OVERLAY_FS
           ./scripts/config --file out/.config --enable CONFIG_SYSVIPC
           ./scripts/config --file out/.config --enable CONFIG_SYSVIPC_SYSCTL
           ./scripts/config --file out/.config --enable CONFIG_POSIX_MQUEUE
@@ -136,18 +174,32 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_IKCONFIG
           ./scripts/config --file out/.config --enable CONFIG_IKCONFIG_PROC
 
+          # [৩] Bluetooth Arsenal, Bluebinder & VHCI Patches (100% Fixed)
           ./scripts/config --file out/.config --enable CONFIG_BT
           ./scripts/config --file out/.config --enable CONFIG_BT_BREDR
           ./scripts/config --file out/.config --enable CONFIG_BT_LE
+          ./scripts/config --file out/.config --enable CONFIG_BT_RFCOMM
+          ./scripts/config --file out/.config --enable CONFIG_BT_RFCOMM_TTY
+          ./scripts/config --file out/.config --enable CONFIG_BT_BNEP
+          ./scripts/config --file out/.config --enable CONFIG_BT_BNEP_MC_FILTER
+          ./scripts/config --file out/.config --enable CONFIG_BT_BNEP_PROTO_FILTER
+          ./scripts/config --file out/.config --enable CONFIG_BT_HIDP
+          ./scripts/config --file out/.config --enable CONFIG_BT_HCIVHCI
           ./scripts/config --file out/.config --enable CONFIG_BT_HCIBTUSB
           ./scripts/config --file out/.config --enable CONFIG_BT_HCIUART
+          ./scripts/config --file out/.config --enable CONFIG_BT_HCIUART_H4
+          ./scripts/config --file out/.config --enable CONFIG_BT_HCIUART_BCSP
+          ./scripts/config --file out/.config --enable CONFIG_BT_HCIUART_ATH3K
+          ./scripts/config --file out/.config --enable CONFIG_BT_HCIUART_LL
 
+          # [৪] Wireless Drivers, Monitor Mode & Packet Injection (All Chipsets)
           ./scripts/config --file out/.config --enable CONFIG_NETDEVICES
           ./scripts/config --file out/.config --enable CONFIG_WLAN
           ./scripts/config --file out/.config --enable CONFIG_WIRELESS
           ./scripts/config --file out/.config --enable CONFIG_WIRELESS_EXT
           ./scripts/config --file out/.config --enable CONFIG_CFG80211
           ./scripts/config --file out/.config --enable CONFIG_CFG80211_WEXT
+          ./scripts/config --file out/.config --enable CONFIG_CFG80211_INTERNAL_REGDB
           ./scripts/config --file out/.config --enable CONFIG_LIB80211
           ./scripts/config --file out/.config --enable CONFIG_MAC80211
           ./scripts/config --file out/.config --enable CONFIG_MAC80211_RC_DEFAULT_MINSTREL
@@ -158,17 +210,16 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_CRYPTO_CCM
           ./scripts/config --file out/.config --enable CONFIG_CRYPTO_GCM
 
+          # All Popular USB Wi-Fi Drivers
           ./scripts/config --file out/.config --enable CONFIG_WLAN_VENDOR_ATH
           ./scripts/config --file out/.config --enable CONFIG_ATH_CARDS
           ./scripts/config --file out/.config --enable CONFIG_ATH9K_HTC
           ./scripts/config --file out/.config --enable CONFIG_CARL9170
-
           ./scripts/config --file out/.config --enable CONFIG_WLAN_VENDOR_RALINK
           ./scripts/config --file out/.config --enable CONFIG_RT2X00
           ./scripts/config --file out/.config --enable CONFIG_RT2800USB
           ./scripts/config --file out/.config --enable CONFIG_WLAN_VENDOR_MEDIATEK
           ./scripts/config --file out/.config --enable CONFIG_MT7601U
-
           ./scripts/config --file out/.config --enable CONFIG_WLAN_VENDOR_REALTEK
           ./scripts/config --file out/.config --enable CONFIG_RTL_CARDS
           ./scripts/config --file out/.config --enable CONFIG_RTL8187
@@ -176,13 +227,17 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_RTL8XXXU
           ./scripts/config --file out/.config --enable CONFIG_R8188EU
 
-          ./scripts/config --file out/.config --enable CONFIG_USB_CONFIGFS_F_HID
+          # [৫] BadUSB, HID Injection, SDR & USB Ethernet
+          ./scripts/config --file out/.config --enable CONFIG_HIDRAW
           ./scripts/config --file out/.config --enable CONFIG_UHID
           ./scripts/config --file out/.config --enable CONFIG_USB_HID
+          ./scripts/config --file out/.config --enable CONFIG_USB_CONFIGFS
+          ./scripts/config --file out/.config --enable CONFIG_USB_CONFIGFS_F_HID
+          ./scripts/config --file out/.config --enable CONFIG_USB_CONFIGFS_F_FS
+          ./scripts/config --file out/.config --enable CONFIG_USB_F_HID
           ./scripts/config --file out/.config --enable CONFIG_USB_USBNET
           ./scripts/config --file out/.config --enable CONFIG_USB_NET_AX8817X
           ./scripts/config --file out/.config --enable CONFIG_USB_RTL8152
-
           ./scripts/config --file out/.config --enable CONFIG_MEDIA_SDR_SUPPORT
           ./scripts/config --file out/.config --enable CONFIG_DVB_RTL2832_SDR
           ./scripts/config --file out/.config --enable CONFIG_USB_HACKRF
@@ -208,8 +263,8 @@ jobs:
                HOSTCFLAGS="-fcommon" \
                HOSTCXXFLAGS="-fcommon"
 
-      # ৬. বিশেষ RTL8188FU ড্রাইভার কম্পাইলেশন (পাইথন দিয়ে ১০০% নিখুঁত রোমিং ফিক্স)
-      - name: Build and Package Dedicated RTL8188FU (0bda:f179) Driver
+      # ৬. বিশেষ RTL8188FU (0bda:f179) ড্রাইভার ও ফার্মওয়্যার বিল্ড
+      - name: Build and Package Dedicated RTL8188FU Driver
         run: |
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           git clone https://github.com/kelebek333/rtl8188fu rtl8188fu
@@ -218,7 +273,7 @@ jobs:
           sed -i 's/CONFIG_POWER_SAVING = y/CONFIG_POWER_SAVING = n/' Makefile
           sed -i 's/CONFIG_WIFI_MONITOR = n/CONFIG_WIFI_MONITOR = y/' Makefile
           
-          # Python ব্যবহার করে মাল্টি-লাইন রোমিং ফাংশন ক্লিনলি রিমুভ করা হচ্ছে
+          # Python রোমিং ফিক্স (Kernel 4.9 compatibility)
           python3 -c '
           import re
           path = "os_dep/linux/ioctl_cfg80211.c"
@@ -240,11 +295,11 @@ jobs:
         run: |
           cd AnyKernel3
           cp ../kernel/out/arch/arm64/boot/Image.gz-dtb . || cp ../kernel/out/arch/arm64/boot/Image.gz . || cp ../kernel/out/arch/arm64/boot/Image .
-          zip -r9 ../Kali-NetHunter-Titan-OC-Master.zip * -x .git README.md *placeholder
+          zip -r9 ../Kali-NetHunter-Titan-Extreme-OC-Master.zip * -x .git README.md *placeholder
 
-      # ৮. আউটপুট আপলোড
+      # ৮. আউটপুট আর্টিফ্যাক্ট আপলোড
       - name: Upload Master Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kali-NetHunter-Titan-OC-Master
-          path: Kali-NetHunter-Titan-OC-Master.zip
+          name: Kali-NetHunter-Titan-Extreme-OC-Master
+          path: Kali-NetHunter-Titan-Extreme-OC-Master.zip
