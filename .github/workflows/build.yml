@@ -482,8 +482,8 @@ jobs:
           cp rtl8188fu/rtl8188fu.ko AnyKernel3/
           cp rtl8188fu/firmware/rtl8188fufw.bin AnyKernel3/
 
-      # ৯. সরাসরি DTC কম্পাইলার দিয়ে আসল ২.২ GHz ও ৮০০ MHz DTB তৈরি
-      - name: Compile Real 2.2GHz DTB using Native DTC and Prepare Package
+      # ৯. সরাসরি শুধুমাত্র SDM450 ও M11 DTS ফাইল কম্পাইল করে পারফেক্ট ২ MB DTB তৈরি
+      - name: Compile Target SDM450/M11 DTB using Native DTC and Prepare Package
         run: |
           python3 -c '
           import os, glob, subprocess
@@ -503,11 +503,15 @@ jobs:
               "-x", "assembler-with-cpp"
           ]
 
-          compiled_dtbs = []
-          dts_files = glob.glob(f"{dts_dir}/*.dts")
+          # শুধুমাত্র SDM450 ও M11 সম্পর্কিত DTS ফাইল সিলেক্ট করা (যাতে সাইজ পারফেক্ট ২ MB থাকে)
+          dts_files = glob.glob(f"{dts_dir}/sdm450*.dts") + glob.glob(f"{dts_dir}/*m11*.dts")
           if not dts_files:
-              dts_files = [f"{dts_dir}/sdm450.dtsi"]
+              dts_files = [f"{dts_dir}/sdm450-mtp.dts"]
 
+          dts_files = list(set(dts_files))
+          print(f"[TARGET DTS] Selected files: {dts_files}")
+
+          compiled_dtbs = []
           for dts in dts_files:
               base = os.path.basename(dts)
               tmp_dts = f"/tmp/{base}.tmp"
@@ -536,7 +540,7 @@ jobs:
                           outfile.write(infile.read())
               final_sz = os.path.getsize("AnyKernel3/dtb")
               print("==========================================================")
-              print(f"[FINAL DTB SUCCESS] AnyKernel3/dtb created! Size: {final_sz} bytes")
+              print(f"[FINAL DTB SUCCESS] Perfect AnyKernel3/dtb created! Size: {final_sz} bytes ({round(final_sz / (1024*1024), 2)} MB)")
               print("==========================================================")
           '
           
