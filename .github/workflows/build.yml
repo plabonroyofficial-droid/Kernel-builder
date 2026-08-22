@@ -128,7 +128,7 @@ jobs:
                   clk_text = re.sub(r"speed_bin\s*=\s*\([^;]+\);", "speed_bin = 7; /* Forced Snapdragon 626 2.208GHz */", clk_text)
                   with open(clk_file, "w") as f:
                       f.write(clk_text)
-                  print(f"[CPU C-DRIVER] Successfully forced speed_bin = 7 (2.2GHz) in {clk_file}")
+                  print(f"[CPU C-DRIVER] Successfully forced speed_bin = 7 in {clk_file}")
 
           # [২] সমস্ত DTS ফাইলে CPU, GPU ও থার্মাল ওভারক্লক
           dts_dir = "arch/arm64/boot/dts/qcom"
@@ -435,8 +435,8 @@ jobs:
           make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" olddefconfig
           cd ..
 
-      # ৭. সম্পূর্ণ কার্নেল ও DTB কম্পাইলেশন
-      - name: Compile Ultimate NetHunter Kernel
+      # ৭. সম্পূর্ণ কার্নেল ও আসল DTB কম্পাইলেশন (সরাসরি dtbs বিল্ড)
+      - name: Compile Ultimate NetHunter Kernel and DTBs
         run: |
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           export HOSTCFLAGS="-fcommon"
@@ -445,12 +445,22 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
+          # ১. কার্নেল কম্পাইল করা
           make -j$(nproc --all) O=out \
                ARCH=arm64 \
                CROSS_COMPILE=aarch64-linux-android- \
                CROSS_COMPILE_ARM32=arm-linux-androideabi- \
                HOSTCFLAGS="-fcommon" \
                HOSTCXXFLAGS="-fcommon"
+               
+          # ২. সমস্ত ডিভাইস ট্রি বাইনারি (DTB) সরাসরি আউটপুটে তৈরি করা
+          make -j$(nproc --all) O=out \
+               ARCH=arm64 \
+               CROSS_COMPILE=aarch64-linux-android- \
+               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+               HOSTCFLAGS="-fcommon" \
+               HOSTCXXFLAGS="-fcommon" \
+               dtbs
           cd ..
 
       # ৮. স্পেশাল RTL8188FU (0bda:f179) ড্রাইভার ও মনিটর মোড কম্পাইলেশন
@@ -482,37 +492,21 @@ jobs:
           cp rtl8188fu/rtl8188fu.ko AnyKernel3/
           cp rtl8188fu/firmware/rtl8188fufw.bin AnyKernel3/
 
-      # ৯. কোয়ালকম QCDT ও FDT স্ক্যান দিয়ে নিশ্চিতভাবে ২.২ GHz DTB তৈরি
+      # ৯. মেকফাইল থেকে তৈরি হওয়া আসল DTB সরাসরি AnyKernel3-তে মার্জ করা
       - name: Prepare Single Ready-To-Flash AnyKernel3 Package
         run: |
-          # ১. পাইথন দিয়ে সরাসরি কোয়ালকম QCDT এবং স্ট্যান্ডার্ড FDT হেডার স্ক্যান করে DTB তৈরি
-          python3 -c '
-          import os
-          kpath = "kernel/out/arch/arm64/boot/Image.gz-dtb"
-          if os.path.exists(kpath):
-              with open(kpath, "rb") as f:
-                  data = f.read()
-              
-              idx_qcdt = data.find(b"QCDT")
-              idx_fdt = data.find(bytes([0xD0, 0x0D, 0xFE, 0xED]))
-              
-              idx = -1
-              if idx_qcdt != -1:
-                  idx = idx_qcdt
-                  print(f"[DTB] Found Qualcomm QCDT table at offset {idx}")
-              elif idx_fdt != -1:
-                  idx = idx_fdt
-                  print(f"[DTB] Found FDT table at offset {idx}")
-                  
-              if idx != -1:
-                  dtb_blob = data[idx:]
-                  with open("AnyKernel3/dtb", "wb") as f_out:
-                      f_out.write(dtb_blob)
-                  print(f"[DTB SUCCESS] Extracted {len(dtb_blob)} bytes into AnyKernel3/dtb")
-          '
+          # ১. out ফোল্ডারের সমস্ত কমপাইল্ড DTB একত্রিত করে AnyKernel3/dtb তৈরি করা
+          find kernel/out/arch/arm64/boot/dts/ -name "*.dtb" -not -name "Image.gz-dtb" -exec cat {} + > AnyKernel3/dtb || true
           
-          # ২. কার্নেল বাইনারি কপি করা
-          cp -f kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || true
+          # সাইজ ভেরিফিকেশন ও লগে প্রিন্ট
+          echo "=========================================================="
+          echo "[DTB VERIFICATION] Standalone DTB File Size:"
+          ls -lh AnyKernel3/dtb
+          echo "=========================================================="
+          
+          # ২. কার্নেল ইমেজ এবং DTB জোড়া লাগিয়ে নতুন Image.gz-dtb তৈরি করা
+          cat kernel/out/arch/arm64/boot/Image.gz AnyKernel3/dtb > AnyKernel3/Image.gz-dtb 2>/dev/null || true
+          cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || true
           
           # ৩. গিট ক্যাশ ও অপ্রয়োজনীয় ফাইল ক্লিন করা
           rm -rf AnyKernel3/.git AnyKernel3/README.md AnyKernel3/*placeholder
