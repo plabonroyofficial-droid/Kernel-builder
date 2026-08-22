@@ -113,7 +113,7 @@ jobs:
           echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/m11q_open_defconfig
           cd ..
 
-      # ৪. সমস্ত DTS ফাইলে CPU (2.2GHz), GPU (800MHz) এবং থার্মাল (48°C) নিশ্চিত করা
+      # ৪. সমস্ত DTS ফাইলে CPU (2.2GHz), GPU (800MHz) এবং থার্মাল (48°C) ওভারক্লক ইনজেকশন
       - name: Overclock CPU to 2.2GHz, GPU to 800MHz & Set Thermal Throttle to 48C
         run: |
           cd kernel
@@ -160,9 +160,9 @@ jobs:
           git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
           cat << 'EOF' > AnyKernel3/anykernel.sh
           ### AnyKernel3 Ramdisk Mod Script
-          ## Custom NetHunter Titan Edition by Plabon Roy
+          ## Custom NetHunter Titan Extreme Edition by Plabon Roy
           properties() { '
-          kernel.string=Kali NetHunter Titan OC by Plabon Roy
+          kernel.string=Kali NetHunter Titan Extreme OC by Plabon Roy
           do.devicecheck=1
           do.modules=0
           do.systemless=0
@@ -184,8 +184,8 @@ jobs:
           
           ui_print " ";
           ui_print "============================================";
-          ui_print "    KALI NETHUNTER TITAN OC MASTER KERNEL   ";
-          ui_print "       CPU: 2.2GHz | GPU: 800MHz Max        ";
+          ui_print "  KALI NETHUNTER TITAN EXTREME MASTER OC   ";
+          ui_print "    CPU: 2.2GHz Max | GPU: 800MHz Turbo     ";
           ui_print "============================================";
           ui_print " [•] Lead Developer : Plabon Roy";
           ui_print " [•] GitHub Profile : github.com/plabonroyofficial";
@@ -240,15 +240,15 @@ jobs:
           ui_print " ";
           EOF
 
-      # ৬. সম্পূর্ণ নেটহান্টার ড্রাইভার ও DTB অ্যাপেন্ড কনফিগারেশন
+      # ৬. সম্পূর্ণ নেটহান্টার ড্রাইভার কনফিগারেশন
       - name: Configure All NetHunter & Performance Drivers
         run: |
           # Lexer ফিক্স
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.lex.c_shipped || true
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.l || true
 
-          # কার্নেল নাম
-          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Titan-OC-by-Plabon"/' kernel/arch/arm64/configs/m11q_open_defconfig
+          # আল্টিমেট পাওয়ারফুল কার্নেল নাম (About Phone এর জন্য)
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Titan-Extreme-OC-2.2GHz-800MHz-Powered-by-Plabon"/' kernel/arch/arm64/configs/m11q_open_defconfig
 
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           export HOSTCFLAGS="-fcommon"
@@ -265,8 +265,6 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_CPU_FREQ_GOV_PERFORMANCE
           ./scripts/config --file out/.config --enable CONFIG_DEVFREQ_GOV_PERFORMANCE
           ./scripts/config --file out/.config --enable CONFIG_DEVFREQ_GOV_QCOM_ADRENO_TZ
-          ./scripts/config --file out/.config --enable CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE
-          ./scripts/config --file out/.config --enable CONFIG_BUILD_ARM64_DT_OVERLAY
 
           # [২] Chroot ও সিস্টেম কোর
           ./scripts/config --file out/.config --enable CONFIG_SYSVIPC
@@ -433,8 +431,8 @@ jobs:
           make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" olddefconfig
           cd ..
 
-      # ৭. সম্পূর্ণ কার্নেল ও DTB কম্পাইলেশন (Image.gz-dtb এবং dtbs তৈরি)
-      - name: Compile Ultimate NetHunter Kernel and DTBs
+      # ৭. সম্পূর্ণ কার্নেল ও DTB কম্পাইলেশন (১০০% ক্লিন মেক ইঞ্জিন)
+      - name: Compile Ultimate NetHunter Kernel
         run: |
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           export HOSTCFLAGS="-fcommon"
@@ -448,8 +446,7 @@ jobs:
                CROSS_COMPILE=aarch64-linux-android- \
                CROSS_COMPILE_ARM32=arm-linux-androideabi- \
                HOSTCFLAGS="-fcommon" \
-               HOSTCXXFLAGS="-fcommon" \
-               Image.gz Image.gz-dtb dtbs
+               HOSTCXXFLAGS="-fcommon"
           cd ..
 
       # ৮. স্পেশাল RTL8188FU (0bda:f179) ড্রাইভার ও মনিটর মোড কম্পাইলেশন
@@ -481,24 +478,23 @@ jobs:
           cp rtl8188fu/rtl8188fu.ko AnyKernel3/
           cp rtl8188fu/firmware/rtl8188fufw.bin AnyKernel3/
 
-      # ৯. রেডিমেড ফ্ল্যাশেবল জিপ তৈরি (Kernel + ২.২ GHz DTB ইনজেকশন)
-      - name: Package Ready-To-Flash NetHunter Zip with New DTB Image
+      # ৯. রেডিমেড ফ্ল্যাশেবল ফাইল প্যাকেজিং (DTB এবং কার্নেল একত্রিতকরণ)
+      - name: Prepare Single Ready-To-Flash AnyKernel3 Package
         run: |
-          # ১. নতুন কম্পাইল হওয়া সব DTB একত্রিত করে AnyKernel3/dtb তৈরি করা (Boot Header v2 এর জন্য)
-          cat kernel/out/arch/arm64/boot/dts/qcom/sdm450*.dtb > AnyKernel3/dtb 2>/dev/null || cat kernel/out/arch/arm64/boot/dts/qcom/*.dtb > AnyKernel3/dtb 2>/dev/null || true
+          # ১. কমপাইল হওয়া সমস্ত ২.২ GHz ও ৮০০ MHz DTB একত্রিত করে AnyKernel3/dtb তৈরি করা
+          find kernel/out/arch/arm64/boot/dts/qcom/ -name "*.dtb" -exec cat {} + > AnyKernel3/dtb 2>/dev/null || true
           
-          # ২. কার্নেল বাইনারি কপি করা
+          # ২. কার্নেল বাইনারি AnyKernel3 তে পাঠানো
           cp -f kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || true
           cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || true
           cp -f kernel/out/arch/arm64/boot/Image AnyKernel3/ 2>/dev/null || true
           
-          cd AnyKernel3
-          zip -r9 ../Kali-NetHunter-Titan-OC-Master.zip * -x .git README.md *placeholder
-          cd ..
+          # ৩. গিট ক্যাশ ও অপ্রয়োজনীয় ফাইল ক্লিন করা
+          rm -rf AnyKernel3/.git AnyKernel3/README.md AnyKernel3/*placeholder
 
-      # ১০. আউটপুট আর্টফ্যাক্ট আপলোড
-      - name: Upload Master Kernel Artifact
+      # ১০. সরাসরি সিঙ্গেল ফ্ল্যাশেবল জিপ আপলোড (ডাবল জিপ ফিক্স)
+      - name: Upload Single Ready-To-Flash NetHunter Zip
         uses: actions/upload-artifact@v4
         with:
-          name: Kali-NetHunter-Titan-OC-Master
-          path: Kali-NetHunter-Titan-OC-Master.zip
+          name: Kali-NetHunter-Titan-Extreme-OC-Master
+          path: AnyKernel3/
