@@ -482,10 +482,9 @@ jobs:
           cp rtl8188fu/rtl8188fu.ko AnyKernel3/
           cp rtl8188fu/firmware/rtl8188fufw.bin AnyKernel3/
 
-      # ৯. সরাসরি DTC কম্পাইলার দিয়ে ১ সেকেন্ডে আসল ২.২ GHz ও ৮০০ MHz DTB তৈরি
+      # ৯. সরাসরি DTC কম্পাইলার দিয়ে আসল ২.২ GHz ও ৮০০ MHz DTB তৈরি
       - name: Compile Real 2.2GHz DTB using Native DTC and Prepare Package
         run: |
-          # পাইথন দিয়ে সরাসরি সোর্স থেকে cpp এবং dtc চালিয়ে আসল DTB তৈরি
           python3 -c '
           import os, glob, subprocess
 
@@ -535,9 +534,10 @@ jobs:
                   for dtb in compiled_dtbs:
                       with open(dtb, "rb") as infile:
                           outfile.write(infile.read())
-              print(f"==========================================================")
-              print(f"[FINAL DTB] AnyKernel3/dtb created! Size: {os.path.getsize(\"AnyKernel3/dtb\")} bytes")
-              print(f"==========================================================")
+              final_sz = os.path.getsize("AnyKernel3/dtb")
+              print("==========================================================")
+              print(f"[FINAL DTB SUCCESS] AnyKernel3/dtb created! Size: {final_sz} bytes")
+              print("==========================================================")
           '
           
           # ২. শুধুমাত্র প্রয়োজনীয় কম্প্রেসড কার্নেল ইমেজ কপি করা
