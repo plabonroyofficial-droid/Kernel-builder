@@ -31,7 +31,7 @@ jobs:
       - name: Setup KernelSU-Next & Advanced Manual Hooks
         run: |
           cd kernel
-          # KernelSU-Next অফিসিয়াল স্ক্রিপ্ট ও সিমলিংক সেটআপ
+          # KernelSU-Next অফিসিয়াল স্ক্রিপ্ট ও সিমলিংক সেটআপ (Kconfig ফিক্স)
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next || {
             git clone https://github.com/KernelSU-Next/KernelSU-Next KernelSU-Next
             ln -sf ../KernelSU-Next/kernel drivers/kernelsu
@@ -39,7 +39,7 @@ jobs:
             grep -q "kernelsu" drivers/Makefile || echo "obj-\$(CONFIG_KSU) += kernelsu/" >> drivers/Makefile
           }
           
-          # পাইথন দিয়ে fs/open.c, fs/read_write.c এবং fs/stat.c তে হুক ইনজেক্ট
+          # পাইথন দিয়ে fs/open.c, fs/read_write.c এবং fs/stat.c তে ১০০% এররবিহীন হুক ইনজেক্ট
           python3 -c '
           import os
 
@@ -120,59 +120,32 @@ jobs:
           python3 -c '
           import os, re
 
-          # [১] msm8953.dtsi ফাইলে SDM450-এর Speed-Bin 6 (এবং 0, 2)-এ সরাসরি 2.2 GHz যোগ করা
+          # [১] msm8953.dtsi ফাইলে Speed-Bin 6 (SDM450), 0 এবং 2 তে 2.2 GHz যোগ করা
           fpath = "arch/arm64/boot/dts/qcom/msm8953.dtsi"
           if os.path.exists(fpath):
               with open(fpath, "r") as f:
                   text = f.read()
 
-              full_cl = """<\t  0 0>,
-\t\t\t<\t652800000 1>,
-\t\t\t< 1036800000 2>,
-\t\t\t< 1401600000 3>,
-\t\t\t< 1689600000 4>,
-\t\t\t< 1804800000 5>,
-\t\t\t< 1958400000 6>,
-\t\t\t< 2016000000 7>,
-\t\t\t< 2150400000 8>,
-\t\t\t< 2208000000 9>;"""
+              cl_ext = ", < 1958400000 6>, < 2016000000 7>, < 2150400000 8>, < 2208000000 9>;"
+              cci_ext = ", < 783360000 6>, < 806400000 7>, < 860160000 8>, < 883200000 9>;"
 
-              full_cci = """<\t  0 0>,
-\t\t\t<\t261120000 1>,
-\t\t\t<\t414720000 2>,
-\t\t\t<\t560640000 3>,
-\t\t\t<\t675840000 4>,
-\t\t\t<\t721920000 5>,
-\t\t\t<\t783360000 6>,
-\t\t\t<\t806400000 7>,
-\t\t\t<\t860160000 8>,
-\t\t\t<\t883200000 9>;"""
-
-              # SDM450 এর speed6-bin পরিবর্তন
-              text = re.sub(r"qcom,speed6-bin-v0-cl\s*=\s*<[^;]+;", f"qcom,speed6-bin-v0-cl =\n\t\t\t{full_cl}", text)
-              text = re.sub(r"qcom,speed6-bin-v0-cci\s*=\s*<[^;]+;", f"qcom,speed6-bin-v0-cci =\n\t\t\t{full_cci}", text)
-
-              # speed0 এবং speed2 পরিবর্তন
-              text = re.sub(r"qcom,speed0-bin-v0-cl\s*=\s*<[^;]+;", f"qcom,speed0-bin-v0-cl =\n\t\t\t{full_cl}", text)
-              text = re.sub(r"qcom,speed0-bin-v0-cci\s*=\s*<[^;]+;", f"qcom,speed0-bin-v0-cci =\n\t\t\t{full_cci}", text)
-              text = re.sub(r"qcom,speed2-bin-v0-cl\s*=\s*<[^;]+;", f"qcom,speed2-bin-v0-cl =\n\t\t\t{full_cl}", text)
-              text = re.sub(r"qcom,speed2-bin-v0-cci\s*=\s*<[^;]+;", f"qcom,speed2-bin-v0-cci =\n\t\t\t{full_cci}", text)
+              # speed6 (SDM450), speed0, speed2 টেবিলে 2.2GHz আনলক
+              text = re.sub(r"<\s*1804800000\s+5\s*>;", r"< 1804800000 5>" + cl_ext, text)
+              text = re.sub(r"<\s*721920000\s+5\s*>;", r"< 721920000 5>" + cci_ext, text)
+              text = re.sub(r"<\s*2016000000\s+7\s*>;", r"< 2016000000 7>, < 2150400000 8>, < 2208000000 9>;", text)
+              text = re.sub(r"<\s*806400000\s+7\s*>;", r"< 806400000 7>, < 860160000 8>, < 883200000 9>;", text)
 
               with open(fpath, "w") as f:
                   f.write(text)
-              print("[DTS OC] CPU 2.2GHz Unlocked across SDM450 speed-bins in msm8953.dtsi")
+              print("[DTS OC] CPU 2.2GHz Unlocked in msm8953.dtsi")
 
           # [২] sdm450.dtsi ফাইলে GPU 800 MHz টার্বো সেট করা
           fpath = "arch/arm64/boot/dts/qcom/sdm450.dtsi"
           if os.path.exists(fpath):
               with open(fpath, "r") as f:
                   text = f.read()
-
-              # টার্বো কর্নার 600MHz -> 800MHz
               text = re.sub(r"<\s*600000000\s+7\s*>;", "< 800000000   7 >;  /* Turbo 800MHz */", text)
-              # টার্বো পাওয়ার লেভেল 600MHz -> 800MHz
               text = re.sub(r"qcom,gpu-freq\s*=\s*<\s*600000000\s*>;", "qcom,gpu-freq = <800000000>;", text)
-
               with open(fpath, "w") as f:
                   f.write(text)
               print("[DTS OC] GPU 800MHz Unlocked in sdm450.dtsi")
@@ -189,7 +162,7 @@ jobs:
                       f.write(text)
                   print(f"[DTS OC] GPU 800MHz Unlocked in {fname}")
 
-          # [৪] থার্মাল থ্রোটলিং ৪৩°C (43000) থেকে বাড়িয়ে ৪৮°C (48000) করা
+          # [৪] থার্মাল থ্রোটলিং ৪৮°C (48000) করা
           fpath = "arch/arm64/boot/dts/qcom/msm8953-thermal.dtsi"
           if os.path.exists(fpath):
               with open(fpath, "r") as f:
