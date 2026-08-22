@@ -113,13 +113,24 @@ jobs:
           echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/m11q_open_defconfig
           cd ..
 
-      # ৪. সমস্ত DTS ফাইলে CPU (2.2GHz), GPU (800MHz) এবং থার্মাল (48°C) ওভারক্লক ইনজেকশন
-      - name: Overclock CPU to 2.2GHz, GPU to 800MHz & Set Thermal Throttle to 48C
+      # ৪. কার্নেল ড্রাইভার C-কোডে Speed-Bin 7 ফোর্স করা এবং DTS-এ 2.2GHz & 800MHz ইনজেক্ট
+      - name: Force Speed-Bin 7 in C Driver & Overclock DTS to 2.2GHz, 800MHz, 48C
         run: |
           cd kernel
           python3 -c '
           import os, re
 
+          # [১] drivers/clk/msm/clock-cpu-8953.c ফাইলে সরাসরি 2.2 GHz (Speed Bin 7) হার্ডকোড ফোর্স করা
+          for clk_file in ["drivers/clk/msm/clock-cpu-8953.c", "drivers/clk/qcom/clock-cpu-8953.c"]:
+              if os.path.exists(clk_file):
+                  with open(clk_file, "r") as f:
+                      clk_text = f.read()
+                  clk_text = re.sub(r"speed_bin\s*=\s*\([^;]+\);", "speed_bin = 7; /* Forced Snapdragon 626 2.208GHz */", clk_text)
+                  with open(clk_file, "w") as f:
+                      f.write(clk_text)
+                  print(f"[CPU C-DRIVER] Successfully forced speed_bin = 7 (2.2GHz) in {clk_file}")
+
+          # [২] সমস্ত DTS ফাইলে CPU, GPU ও থার্মাল ওভারক্লক
           dts_dir = "arch/arm64/boot/dts/qcom"
           full_cl = ", < 1958400000 6>, < 2016000000 7>, < 2150400000 8>, < 2208000000 9>"
           full_cci = ", < 783360000 6>, < 806400000 7>, < 860160000 8>, < 883200000 9>"
@@ -132,19 +143,12 @@ jobs:
                           text = f.read()
 
                       orig = text
-                      # [১] CPU speed-bin ওভারক্লক
                       text = re.sub(r"<\s*1804800000\s+\d+\s*>", r"< 1804800000 5>" + full_cl, text)
                       text = re.sub(r"<\s*2016000000\s+\d+\s*>", r"< 2016000000 7>, < 2150400000 8>, < 2208000000 9>", text)
-
-                      # [২] CPU cci বাস ক্লক আপডেট
                       text = re.sub(r"<\s*721920000\s+\d+\s*>", r"< 721920000 5>" + full_cci, text)
                       text = re.sub(r"<\s*806400000\s+\d+\s*>", r"< 806400000 7>, < 860160000 8>, < 883200000 9>", text)
-
-                      # [৩] GPU টার্বো 800MHz এ সেট করা
                       text = re.sub(r"<\s*(?:600000000|650000000)\s+7\s*>;", "< 800000000   7 >;  /* Turbo 800MHz */", text)
                       text = re.sub(r"qcom,gpu-freq\s*=\s*<\s*(?:600000000|650000000)\s*>;", "qcom,gpu-freq = <800000000>;", text)
-
-                      # [৪] থার্মাল ড্রপ পয়েন্ট 48°C এ বৃদ্ধি
                       text = re.sub(r"temperature\s*=\s*<\s*43000\s*>;", "temperature = <48000>;", text)
 
                       if text != orig:
@@ -478,36 +482,42 @@ jobs:
           cp rtl8188fu/rtl8188fu.ko AnyKernel3/
           cp rtl8188fu/firmware/rtl8188fufw.bin AnyKernel3/
 
-      # ৯. পাইথন দিয়ে সরাসরি Image.gz-dtb থেকে আসল DTB এক্সট্রাকশন ও স্লিম প্যাকেজিং
+      # ৯. পাইথন বাইনারি স্ক্যান দিয়ে সরাসরি ২.২ GHz DTB এক্সট্রাকশন ও স্লিম প্যাকেজিং
       - name: Prepare Single Ready-To-Flash AnyKernel3 Package
         run: |
-          # ১. পাইথন দিয়ে Image.gz-dtb ফাইলের ভেতর থেকে আসল ২.২ GHz DTB এক্সট্রাক্ট করা
+          # ১. পাইথন দিয়ে সরাসরি Image.gz-dtb ফাইল থেকে ২.২ GHz ও ৮০০ MHz DTB এক্সট্র্যাক্ট করা
           python3 -c '
           import os
-          magic = b"\xd0\r\xfe\xed"
+          magic = bytes([0xD0, 0x0D, 0xFE, 0xED])
           found = False
-          for kfile in ["kernel/out/arch/arm64/boot/Image.gz-dtb", "kernel/out/arch/arm64/boot/Image-dtb"]:
-              if os.path.exists(kfile):
-                  with open(kfile, "rb") as f:
-                      data = f.read()
-                  idx = data.find(magic)
+          for kpath in ["kernel/out/arch/arm64/boot/Image.gz-dtb", "kernel/out/arch/arm64/boot/Image-dtb"]:
+              if os.path.exists(kpath):
+                  with open(kpath, "rb") as f:
+                      content = f.read()
+                  idx = content.find(magic)
                   if idx != -1:
-                      dtb_data = data[idx:]
+                      dtb_blob = content[idx:]
                       with open("AnyKernel3/dtb", "wb") as f_out:
-                          f_out.write(dtb_data)
-                      print(f"[DTB SUCCESS] Extracted {len(dtb_data)} bytes of DTB into AnyKernel3/dtb")
+                          f_out.write(dtb_blob)
+                      print(f"[DTB EXTRACT SUCCESS] Successfully extracted {len(dtb_blob)} bytes of DTB into AnyKernel3/dtb")
                       found = True
                       break
           if not found:
-              print("[DTB SEARCH] Searching directory for raw .dtb files...")
-              import subprocess
-              subprocess.run("find kernel/out/ -name \"*.dtb\" -not -name \"Image.gz-dtb\" -not -name \"Image-dtb\" -exec cat {} + > AnyKernel3/dtb 2>/dev/null || true", shell=True)
+              print("[DTB FALLBACK] Searching workspace for raw .dtb files...")
+              dtb_files = []
+              for r, d, files in os.walk("kernel"):
+                  for file in files:
+                      if file.endswith(".dtb") and not file.startswith("Image"):
+                          dtb_files.append(os.path.join(r, file))
+              if dtb_files:
+                  with open("AnyKernel3/dtb", "wb") as outfile:
+                      for fname in dtb_files:
+                          with open(fname, "rb") as infile:
+                              outfile.write(infile.read())
+                  print(f"[DTB FALLBACK SUCCESS] Merged {len(dtb_files)} DTBs into AnyKernel3/dtb")
           '
           
-          # যদি কোনো কারণে ০ বাইট ফাইল থাকে তবে মুছে ফেলা
-          [ -s AnyKernel3/dtb ] || rm -f AnyKernel3/dtb
-          
-          # ২. শুধুমাত্র প্রয়োজনীয় কম্প্রেসড কার্নেল ইমেজ কপি করা (বড় ৪৩ MB র-Image বাদ)
+          # ২. শুধুমাত্র প্রয়োজনীয় কম্প্রেসড কার্নেল ইমেজ কপি করা
           cp -f kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || true
           
           # ৩. গিট ক্যাশ ও অপ্রয়োজনীয় ফাইল ক্লিন করা
