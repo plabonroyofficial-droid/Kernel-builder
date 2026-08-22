@@ -27,16 +27,17 @@ jobs:
           git checkout 182f7ee || true
           cd ..
 
-      # ৩. KernelSU-Next ক্লোন ও নিরাপদ পাইথন হুক ইনজেকশন (Kernel 4.9)
+      # ৩. KernelSU-Next সেটআপ ও নিরাপদ পাইথন হুক ইনজেকশন (Kernel 4.9)
       - name: Setup KernelSU-Next & Advanced Manual Hooks
         run: |
           cd kernel
-          # KernelSU-Next সোর্স কোড ক্লোন
-          git clone https://github.com/KernelSU-Next/KernelSU-Next drivers/kernelsu
-          
-          # বিল্ড ট্রিতে যুক্ত করা
-          sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig || true
-          echo "obj-y += kernelsu/" >> drivers/Makefile
+          # KernelSU-Next অফিসিয়াল স্ক্রিপ্ট ও সিমলিংক সেটআপ (Kconfig ফিক্স)
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next || {
+            git clone https://github.com/KernelSU-Next/KernelSU-Next KernelSU-Next
+            ln -sf ../KernelSU-Next/kernel drivers/kernelsu
+            grep -q "drivers/kernelsu/Kconfig" drivers/Kconfig || sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+            grep -q "kernelsu" drivers/Makefile || echo "obj-\$(CONFIG_KSU) += kernelsu/" >> drivers/Makefile
+          }
           
           # পাইথন দিয়ে fs/open.c, fs/read_write.c এবং fs/stat.c তে ১০০% এররবিহীন হুক ইনজেক্ট
           python3 -c '
