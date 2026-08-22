@@ -482,42 +482,36 @@ jobs:
           cp rtl8188fu/rtl8188fu.ko AnyKernel3/
           cp rtl8188fu/firmware/rtl8188fufw.bin AnyKernel3/
 
-      # ৯. পাইথন বাইনারি স্ক্যান দিয়ে সরাসরি ২.২ GHz DTB এক্সট্রাকশন ও স্লিম প্যাকেজিং
+      # ৯. কোয়ালকম QCDT ও FDT স্ক্যান দিয়ে নিশ্চিতভাবে ২.২ GHz DTB তৈরি
       - name: Prepare Single Ready-To-Flash AnyKernel3 Package
         run: |
-          # ১. পাইথন দিয়ে সরাসরি Image.gz-dtb ফাইল থেকে ২.২ GHz ও ৮০০ MHz DTB এক্সট্র্যাক্ট করা
+          # ১. পাইথন দিয়ে সরাসরি কোয়ালকম QCDT এবং স্ট্যান্ডার্ড FDT হেডার স্ক্যান করে DTB তৈরি
           python3 -c '
           import os
-          magic = bytes([0xD0, 0x0D, 0xFE, 0xED])
-          found = False
-          for kpath in ["kernel/out/arch/arm64/boot/Image.gz-dtb", "kernel/out/arch/arm64/boot/Image-dtb"]:
-              if os.path.exists(kpath):
-                  with open(kpath, "rb") as f:
-                      content = f.read()
-                  idx = content.find(magic)
-                  if idx != -1:
-                      dtb_blob = content[idx:]
-                      with open("AnyKernel3/dtb", "wb") as f_out:
-                          f_out.write(dtb_blob)
-                      print(f"[DTB EXTRACT SUCCESS] Successfully extracted {len(dtb_blob)} bytes of DTB into AnyKernel3/dtb")
-                      found = True
-                      break
-          if not found:
-              print("[DTB FALLBACK] Searching workspace for raw .dtb files...")
-              dtb_files = []
-              for r, d, files in os.walk("kernel"):
-                  for file in files:
-                      if file.endswith(".dtb") and not file.startswith("Image"):
-                          dtb_files.append(os.path.join(r, file))
-              if dtb_files:
-                  with open("AnyKernel3/dtb", "wb") as outfile:
-                      for fname in dtb_files:
-                          with open(fname, "rb") as infile:
-                              outfile.write(infile.read())
-                  print(f"[DTB FALLBACK SUCCESS] Merged {len(dtb_files)} DTBs into AnyKernel3/dtb")
+          kpath = "kernel/out/arch/arm64/boot/Image.gz-dtb"
+          if os.path.exists(kpath):
+              with open(kpath, "rb") as f:
+                  data = f.read()
+              
+              idx_qcdt = data.find(b"QCDT")
+              idx_fdt = data.find(bytes([0xD0, 0x0D, 0xFE, 0xED]))
+              
+              idx = -1
+              if idx_qcdt != -1:
+                  idx = idx_qcdt
+                  print(f"[DTB] Found Qualcomm QCDT table at offset {idx}")
+              elif idx_fdt != -1:
+                  idx = idx_fdt
+                  print(f"[DTB] Found FDT table at offset {idx}")
+                  
+              if idx != -1:
+                  dtb_blob = data[idx:]
+                  with open("AnyKernel3/dtb", "wb") as f_out:
+                      f_out.write(dtb_blob)
+                  print(f"[DTB SUCCESS] Extracted {len(dtb_blob)} bytes into AnyKernel3/dtb")
           '
           
-          # ২. শুধুমাত্র প্রয়োজনীয় কম্প্রেসড কার্নেল ইমেজ কপি করা
+          # ২. কার্নেল বাইনারি কপি করা
           cp -f kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || true
           
           # ৩. গিট ক্যাশ ও অপ্রয়োজনীয় ফাইল ক্লিন করা
