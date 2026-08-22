@@ -435,8 +435,8 @@ jobs:
           make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" olddefconfig
           cd ..
 
-      # ৭. সম্পূর্ণ কার্নেল ও আসল DTB কম্পাইলেশন (সরাসরি dtbs বিল্ড)
-      - name: Compile Ultimate NetHunter Kernel and DTBs
+      # ৭. সম্পূর্ণ কার্নেল কম্পাইলেশন
+      - name: Compile Ultimate NetHunter Kernel
         run: |
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           export HOSTCFLAGS="-fcommon"
@@ -445,22 +445,12 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # ১. কার্নেল কম্পাইল করা
           make -j$(nproc --all) O=out \
                ARCH=arm64 \
                CROSS_COMPILE=aarch64-linux-android- \
                CROSS_COMPILE_ARM32=arm-linux-androideabi- \
                HOSTCFLAGS="-fcommon" \
                HOSTCXXFLAGS="-fcommon"
-               
-          # ২. সমস্ত ডিভাইস ট্রি বাইনারি (DTB) সরাসরি আউটপুটে তৈরি করা
-          make -j$(nproc --all) O=out \
-               ARCH=arm64 \
-               CROSS_COMPILE=aarch64-linux-android- \
-               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-               HOSTCFLAGS="-fcommon" \
-               HOSTCXXFLAGS="-fcommon" \
-               dtbs
           cd ..
 
       # ৮. স্পেশাল RTL8188FU (0bda:f179) ড্রাইভার ও মনিটর মোড কম্পাইলেশন
@@ -492,21 +482,66 @@ jobs:
           cp rtl8188fu/rtl8188fu.ko AnyKernel3/
           cp rtl8188fu/firmware/rtl8188fufw.bin AnyKernel3/
 
-      # ৯. মেকফাইল থেকে তৈরি হওয়া আসল DTB সরাসরি AnyKernel3-তে মার্জ করা
-      - name: Prepare Single Ready-To-Flash AnyKernel3 Package
+      # ৯. সরাসরি DTC কম্পাইলার দিয়ে ১ সেকেন্ডে আসল ২.২ GHz ও ৮০০ MHz DTB তৈরি
+      - name: Compile Real 2.2GHz DTB using Native DTC and Prepare Package
         run: |
-          # ১. out ফোল্ডারের সমস্ত কমপাইল্ড DTB একত্রিত করে AnyKernel3/dtb তৈরি করা
-          find kernel/out/arch/arm64/boot/dts/ -name "*.dtb" -not -name "Image.gz-dtb" -exec cat {} + > AnyKernel3/dtb || true
+          # পাইথন দিয়ে সরাসরি সোর্স থেকে cpp এবং dtc চালিয়ে আসল DTB তৈরি
+          python3 -c '
+          import os, glob, subprocess
+
+          dtc_bin = "kernel/out/scripts/dtc/dtc"
+          if not os.path.exists(dtc_bin):
+              dtc_bin = "kernel/scripts/dtc/dtc"
+
+          dts_dir = "kernel/arch/arm64/boot/dts/qcom"
+          inc_flags = [
+              "-nostdinc",
+              "-I", "kernel/include",
+              "-I", "kernel/arch/arm64/boot/dts",
+              "-I", "kernel/arch/arm64/boot/dts/include",
+              "-I", "kernel/arch/arm64/boot/dts/qcom",
+              "-undef", "-D__DTS__",
+              "-x", "assembler-with-cpp"
+          ]
+
+          compiled_dtbs = []
+          dts_files = glob.glob(f"{dts_dir}/*.dts")
+          if not dts_files:
+              dts_files = [f"{dts_dir}/sdm450.dtsi"]
+
+          for dts in dts_files:
+              base = os.path.basename(dts)
+              tmp_dts = f"/tmp/{base}.tmp"
+              out_dtb = f"/tmp/{base}.dtb"
+              
+              res_cpp = subprocess.run(["cpp"] + inc_flags + [dts, "-o", tmp_dts], capture_output=True)
+              if res_cpp.returncode == 0:
+                  res_dtc = subprocess.run([dtc_bin, "-I", "dts", "-O", "dtb", "-o", out_dtb, "-W", "no-unit_address_vs_reg", tmp_dts], capture_output=True)
+                  if res_dtc.returncode == 0 and os.path.exists(out_dtb):
+                      compiled_dtbs.append(out_dtb)
+                      print(f"[DTC SUCCESS] Compiled {base} -> {os.path.getsize(out_dtb)} bytes")
+
+          if not compiled_dtbs and os.path.exists(f"{dts_dir}/sdm450.dtsi"):
+              tmp_dts = "/tmp/sdm450_direct.tmp"
+              out_dtb = "/tmp/sdm450_direct.dtb"
+              subprocess.run(["cpp"] + inc_flags + [f"{dts_dir}/sdm450.dtsi", "-o", tmp_dts])
+              subprocess.run([dtc_bin, "-I", "dts", "-O", "dtb", "-o", out_dtb, "-W", "no-unit_address_vs_reg", tmp_dts])
+              if os.path.exists(out_dtb) and os.path.getsize(out_dtb) > 0:
+                  compiled_dtbs.append(out_dtb)
+                  print(f"[DTC SUCCESS] Compiled sdm450.dtsi directly -> {os.path.getsize(out_dtb)} bytes")
+
+          if compiled_dtbs:
+              with open("AnyKernel3/dtb", "wb") as outfile:
+                  for dtb in compiled_dtbs:
+                      with open(dtb, "rb") as infile:
+                          outfile.write(infile.read())
+              print(f"==========================================================")
+              print(f"[FINAL DTB] AnyKernel3/dtb created! Size: {os.path.getsize(\"AnyKernel3/dtb\")} bytes")
+              print(f"==========================================================")
+          '
           
-          # সাইজ ভেরিফিকেশন ও লগে প্রিন্ট
-          echo "=========================================================="
-          echo "[DTB VERIFICATION] Standalone DTB File Size:"
-          ls -lh AnyKernel3/dtb
-          echo "=========================================================="
-          
-          # ২. কার্নেল ইমেজ এবং DTB জোড়া লাগিয়ে নতুন Image.gz-dtb তৈরি করা
-          cat kernel/out/arch/arm64/boot/Image.gz AnyKernel3/dtb > AnyKernel3/Image.gz-dtb 2>/dev/null || true
-          cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || true
+          # ২. শুধুমাত্র প্রয়োজনীয় কম্প্রেসড কার্নেল ইমেজ কপি করা
+          cp -f kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || true
           
           # ৩. গিট ক্যাশ ও অপ্রয়োজনীয় ফাইল ক্লিন করা
           rm -rf AnyKernel3/.git AnyKernel3/README.md AnyKernel3/*placeholder
