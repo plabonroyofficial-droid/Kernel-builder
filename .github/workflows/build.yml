@@ -431,7 +431,7 @@ jobs:
           make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" olddefconfig
           cd ..
 
-      # ৭. সম্পূর্ণ কার্নেল ও আসল DTB কম্পাইলেশন
+      # ৭. সম্পূর্ণ কার্নেল ও আসল DTB কম্পাইলেশন (বাধ্যতামূলক dtbs জেনারেশন)
       - name: Compile Ultimate NetHunter Kernel and DTBs
         run: |
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
@@ -456,7 +456,7 @@ jobs:
                CROSS_COMPILE_ARM32=arm-linux-androideabi- \
                HOSTCFLAGS="-fcommon" \
                HOSTCXXFLAGS="-fcommon" \
-               dtbs || true
+               dtbs
           cd ..
 
       # ৮. স্পেশাল RTL8188FU (0bda:f179) ড্রাইভার ও মনিটর মোড কম্পাইলেশন
@@ -488,16 +488,13 @@ jobs:
           cp rtl8188fu/rtl8188fu.ko AnyKernel3/
           cp rtl8188fu/firmware/rtl8188fufw.bin AnyKernel3/
 
-      # ৯. রেডিমেড ফ্ল্যাশেবল ফাইল প্যাকেজিং (স্লিম ১৮ MB ও আসল ২.২ GHz DTB ফিক্স)
+      # ৯. রেডিমেড ফ্ল্যাশেবল ফাইল প্যাকেজিং (স্লিম ১৮ MB ও আসল ২.২ GHz DTB ইনজেকশন)
       - name: Prepare Single Ready-To-Flash AnyKernel3 Package
         run: |
-          # ১. কমপাইল হওয়া সমস্ত আসল ২.২ GHz ও ৮০০ MHz DTB একত্রিত করে AnyKernel3/dtb তৈরি করা
-          find kernel/out/arch/arm64/boot/dts/ -name "*.dtb" -exec cat {} + > AnyKernel3/dtb 2>/dev/null || true
+          # ১. out ডিরেক্টরি থেকে সমস্ত আসল .dtb খুঁজে AnyKernel3/dtb ফাইলে মার্জ করা
+          find kernel/out/ -name "*.dtb" -not -name "Image.gz-dtb" -not -name "Image-dtb" -exec cat {} + > AnyKernel3/dtb 2>/dev/null || true
           
-          # যদি কোনো কারণে dtb ফাইল খালি থাকে তবে তা ডিলিট করা
-          [ -s AnyKernel3/dtb ] || rm -f AnyKernel3/dtb
-          
-          # ২. শুধুমাত্র প্রয়োজনীয় কম্প্রেসড কার্নেল ইমেজ কপি করা (অপ্রয়োজনীয় ৪৩ MB র-Image ফাইল বাদ)
+          # ২. শুধুমাত্র প্রয়োজনীয় কম্প্রেসড কার্নেল ইমেজ কপি করা (বড় ৪৩ MB র-Image ফাইল বাদ)
           cp -f kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || true
           
           # ৩. গিট ক্যাশ ও অপ্রয়োজনীয় ফাইল ক্লিন করা
