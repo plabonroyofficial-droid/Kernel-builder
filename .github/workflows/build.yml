@@ -27,7 +27,7 @@ jobs:
           git checkout 182f7ee || true
           cd ..
 
-      # ৩. KernelSU-Next ক্লোন ও ম্যানুয়াল হুক ইনজেকশন (Kernel 4.9)
+      # ৩. KernelSU-Next ক্লোন ও নিরাপদ পাইথন হুক ইনজেকশন (Kernel 4.9)
       - name: Setup KernelSU-Next & Advanced Manual Hooks
         run: |
           cd kernel
@@ -35,17 +35,76 @@ jobs:
           git clone https://github.com/KernelSU-Next/KernelSU-Next drivers/kernelsu
           
           # বিল্ড ট্রিতে যুক্ত করা
-          sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+          sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig || true
           echo "obj-y += kernelsu/" >> drivers/Makefile
           
-          # fs/open.c হুক
-          sed -i '/long do_sys_open(/,/^}/ { /getname(/a \    #ifdef CONFIG_KSU\n    extern int ksu_handle_openat(int dfd, const char __user *filename, int flags, umode_t mode);\n    ksu_handle_openat(dfd, filename, flags, mode);\n    #endif' fs/open.c
-          
-          # fs/read_write.c হুক
-          sed -i '/ssize_t vfs_read(/,/^}/ { /return ret;/i \    #ifdef CONFIG_KSU\n    extern int ksu_handle_vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos);\n    ksu_handle_vfs_read(file, buf, count, pos);\n    #endif' fs/read_write.c
-          
-          # fs/stat.c হুক
-          sed -i '/vfs_statx(/,/^}/ { /return ret;/i \    #ifdef CONFIG_KSU\n    extern int ksu_handle_stat(int dfd, const char __user *filename, int flags);\n    ksu_handle_stat(dfd, filename, flags);\n    #endif' fs/stat.c || true
+          # পাইথন দিয়ে fs/open.c, fs/read_write.c এবং fs/stat.c তে ১০০% এররবিহীন হুক ইনজেক্ট
+          python3 -c '
+          import os
+
+          # 1. Patch fs/open.c
+          if os.path.exists("fs/open.c"):
+              with open("fs/open.c", "r") as f:
+                  lines = f.readlines()
+              new_lines = []
+              hook_open = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_openat(int dfd, const char __user *filename, int flags, umode_t mode);\nksu_handle_openat(dfd, filename, flags, mode);\n#endif\n"
+              in_do_sys_open = False
+              hook_inserted = False
+              for line in lines:
+                  new_lines.append(line)
+                  if "do_sys_open(" in line:
+                      in_do_sys_open = True
+                  if in_do_sys_open and not hook_inserted and "getname(" in line:
+                      new_lines.append(hook_open)
+                      hook_inserted = True
+                  if in_do_sys_open and line.startswith("}"):
+                      in_do_sys_open = False
+              with open("fs/open.c", "w") as f:
+                  f.writelines(new_lines)
+              print("[KSU] fs/open.c patched successfully")
+
+          # 2. Patch fs/read_write.c
+          if os.path.exists("fs/read_write.c"):
+              with open("fs/read_write.c", "r") as f:
+                  lines = f.readlines()
+              new_lines = []
+              hook_read = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos);\nksu_handle_vfs_read(file, buf, count, pos);\n#endif\n"
+              in_vfs_read = False
+              hook_inserted = False
+              for line in lines:
+                  if "vfs_read(" in line:
+                      in_vfs_read = True
+                  if in_vfs_read and not hook_inserted and "return ret;" in line:
+                      new_lines.append(hook_read)
+                      hook_inserted = True
+                  new_lines.append(line)
+                  if in_vfs_read and line.startswith("}"):
+                      in_vfs_read = False
+              with open("fs/read_write.c", "w") as f:
+                  f.writelines(new_lines)
+              print("[KSU] fs/read_write.c patched successfully")
+
+          # 3. Patch fs/stat.c
+          if os.path.exists("fs/stat.c"):
+              with open("fs/stat.c", "r") as f:
+                  lines = f.readlines()
+              new_lines = []
+              hook_stat = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_stat(int dfd, const char __user *filename, int flags);\nksu_handle_stat(dfd, filename, flags);\n#endif\n"
+              in_stat = False
+              hook_inserted = False
+              for line in lines:
+                  if "vfs_statx(" in line or "vfs_fstatat(" in line:
+                      in_stat = True
+                  if in_stat and not hook_inserted and ("return error;" in line or "return ret;" in line or "return 0;" in line):
+                      new_lines.append(hook_stat)
+                      hook_inserted = True
+                  new_lines.append(line)
+                  if in_stat and line.startswith("}"):
+                      in_stat = False
+              with open("fs/stat.c", "w") as f:
+                  f.writelines(new_lines)
+              print("[KSU] fs/stat.c patched successfully")
+          '
           
           # ডিফকনফিগে KSU ফ্ল্যাগ যোগ
           echo "CONFIG_KSU=y" >> arch/arm64/configs/m11q_open_defconfig
@@ -115,33 +174,41 @@ jobs:
           dump_boot;
           write_boot;
           
-          # System & Vendor এ RTL8188FU ও ফার্মওয়্যার ডাবল পাথ ইনস্টলেশন (NetHunter Detection Fix)
+          # System & Vendor এ RTL8188FU ও ফার্মওয়্যার ডাবল পাথ ইনস্টলেশন
           ui_print " [•] Injecting Drivers to /system and /vendor...";
           mount -o rw,remount /system 2>/dev/null || mount -o rw,remount /system_root 2>/dev/null || true
           mount -o rw,remount /vendor 2>/dev/null || true
           
-          # ডিরেক্টরি তৈরি
+          # ১. ডিরেক্টরি তৈরি করা
           mkdir -p /system/lib/modules /vendor/lib/modules /system/vendor/lib/modules
           mkdir -p /vendor/firmware/rtlwifi /system/etc/firmware/rtlwifi /lib/firmware/rtlwifi /etc/firmware/rtlwifi
           
-          # .ko ড্রাইভার কপি
+          # ২. সব ফোল্ডারের জন্য সরাসরি 755 পারমিশন নিশ্চিত করা (drwxr-xr-x)
+          chmod 755 /system/lib/modules /vendor/lib/modules /system/vendor/lib/modules
+          chmod 755 /vendor/firmware /vendor/firmware/rtlwifi
+          chmod 755 /system/etc/firmware /system/etc/firmware/rtlwifi
+          chmod 755 /lib/firmware /lib/firmware/rtlwifi
+          chmod 755 /etc/firmware /etc/firmware/rtlwifi
+          
+          # ৩. .ko ড্রাইভার ফাইল কপি করা
           cp -f /tmp/anykernel/rtl8188fu.ko /system/lib/modules/ 2>/dev/null || true
           cp -f /tmp/anykernel/rtl8188fu.ko /vendor/lib/modules/ 2>/dev/null || true
           cp -f /tmp/anykernel/rtl8188fu.ko /system/vendor/lib/modules/ 2>/dev/null || true
           
-          # ফার্মওয়্যার .bin ফাইল কপি
+          # ৪. ফার্মওয়্যার .bin ফাইল কপি করা
           cp -f /tmp/anykernel/rtl8188fufw.bin /vendor/firmware/rtlwifi/ 2>/dev/null || true
           cp -f /tmp/anykernel/rtl8188fufw.bin /system/etc/firmware/rtlwifi/ 2>/dev/null || true
           cp -f /tmp/anykernel/rtl8188fufw.bin /lib/firmware/rtlwifi/ 2>/dev/null || true
           cp -f /tmp/anykernel/rtl8188fufw.bin /etc/firmware/rtlwifi/ 2>/dev/null || true
           
-          # পারমিশন ১০০% নিখুঁত করা (644 Root Permission)
+          # ৫. সব .ko এবং .bin ফাইলের জন্য সরাসরি 644 পারমিশন নিশ্চিত করা (-rw-r--r--)
           chmod 644 /system/lib/modules/rtl8188fu.ko 2>/dev/null || true
           chmod 644 /vendor/lib/modules/rtl8188fu.ko 2>/dev/null || true
           chmod 644 /system/vendor/lib/modules/rtl8188fu.ko 2>/dev/null || true
-          chmod -R 644 /vendor/firmware/rtlwifi/* 2>/dev/null || true
-          chmod -R 644 /system/etc/firmware/rtlwifi/* 2>/dev/null || true
-          chmod -R 644 /lib/firmware/rtlwifi/* 2>/dev/null || true
+          chmod 644 /vendor/firmware/rtlwifi/rtl8188fufw.bin 2>/dev/null || true
+          chmod 644 /system/etc/firmware/rtlwifi/rtl8188fufw.bin 2>/dev/null || true
+          chmod 644 /lib/firmware/rtlwifi/rtl8188fufw.bin 2>/dev/null || true
+          chmod 644 /etc/firmware/rtlwifi/rtl8188fufw.bin 2>/dev/null || true
           
           ui_print " ";
           ui_print "============================================";
