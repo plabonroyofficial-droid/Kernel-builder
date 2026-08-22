@@ -31,7 +31,7 @@ jobs:
       - name: Setup KernelSU-Next & Advanced Manual Hooks
         run: |
           cd kernel
-          # KernelSU-Next অফিসিয়াল স্ক্রিপ্ট ও সিমলিংক সেটআপ (Kconfig ফিক্স)
+          # KernelSU-Next অফিসিয়াল স্ক্রিপ্ট ও সিমলিংক সেটআপ
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next || {
             git clone https://github.com/KernelSU-Next/KernelSU-Next KernelSU-Next
             ln -sf ../KernelSU-Next/kernel drivers/kernelsu
@@ -113,64 +113,44 @@ jobs:
           echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/m11q_open_defconfig
           cd ..
 
-      # ৪. CPU (2.2GHz), GPU (800MHz) এবং থার্মাল থ্রোটলিং (48°C) ইনজেকশন
+      # ৪. সমস্ত DTS ফাইলে CPU (2.2GHz), GPU (800MHz) এবং থার্মাল (48°C) নিশ্চিত করা
       - name: Overclock CPU to 2.2GHz, GPU to 800MHz & Set Thermal Throttle to 48C
         run: |
           cd kernel
           python3 -c '
           import os, re
 
-          # [১] msm8953.dtsi ফাইলে Speed-Bin 6 (SDM450), 0 এবং 2 তে 2.2 GHz যোগ করা
-          fpath = "arch/arm64/boot/dts/qcom/msm8953.dtsi"
-          if os.path.exists(fpath):
-              with open(fpath, "r") as f:
-                  text = f.read()
+          dts_dir = "arch/arm64/boot/dts/qcom"
+          full_cl = ", < 1958400000 6>, < 2016000000 7>, < 2150400000 8>, < 2208000000 9>"
+          full_cci = ", < 783360000 6>, < 806400000 7>, < 860160000 8>, < 883200000 9>"
 
-              cl_ext = ", < 1958400000 6>, < 2016000000 7>, < 2150400000 8>, < 2208000000 9>;"
-              cci_ext = ", < 783360000 6>, < 806400000 7>, < 860160000 8>, < 883200000 9>;"
+          for root, _, files in os.walk(dts_dir):
+              for file in files:
+                  if file.endswith(".dts") or file.endswith(".dtsi"):
+                      fpath = os.path.join(root, file)
+                      with open(fpath, "r", errors="ignore") as f:
+                          text = f.read()
 
-              # speed6 (SDM450), speed0, speed2 টেবিলে 2.2GHz আনলক
-              text = re.sub(r"<\s*1804800000\s+5\s*>;", r"< 1804800000 5>" + cl_ext, text)
-              text = re.sub(r"<\s*721920000\s+5\s*>;", r"< 721920000 5>" + cci_ext, text)
-              text = re.sub(r"<\s*2016000000\s+7\s*>;", r"< 2016000000 7>, < 2150400000 8>, < 2208000000 9>;", text)
-              text = re.sub(r"<\s*806400000\s+7\s*>;", r"< 806400000 7>, < 860160000 8>, < 883200000 9>;", text)
+                      orig = text
+                      # [১] CPU speed-bin ওভারক্লক (1.8GHz ও 2.0GHz কে 2.2GHz এ বর্ধিত করা)
+                      text = re.sub(r"<\s*1804800000\s+\d+\s*>", r"< 1804800000 5>" + full_cl, text)
+                      text = re.sub(r"<\s*2016000000\s+\d+\s*>", r"< 2016000000 7>, < 2150400000 8>, < 2208000000 9>", text)
 
-              with open(fpath, "w") as f:
-                  f.write(text)
-              print("[DTS OC] CPU 2.2GHz Unlocked in msm8953.dtsi")
+                      # [২] CPU cci বাস ক্লক আপডেট
+                      text = re.sub(r"<\s*721920000\s+\d+\s*>", r"< 721920000 5>" + full_cci, text)
+                      text = re.sub(r"<\s*806400000\s+\d+\s*>", r"< 806400000 7>, < 860160000 8>, < 883200000 9>", text)
 
-          # [২] sdm450.dtsi ফাইলে GPU 800 MHz টার্বো সেট করা
-          fpath = "arch/arm64/boot/dts/qcom/sdm450.dtsi"
-          if os.path.exists(fpath):
-              with open(fpath, "r") as f:
-                  text = f.read()
-              text = re.sub(r"<\s*600000000\s+7\s*>;", "< 800000000   7 >;  /* Turbo 800MHz */", text)
-              text = re.sub(r"qcom,gpu-freq\s*=\s*<\s*600000000\s*>;", "qcom,gpu-freq = <800000000>;", text)
-              with open(fpath, "w") as f:
-                  f.write(text)
-              print("[DTS OC] GPU 800MHz Unlocked in sdm450.dtsi")
+                      # [৩] GPU টার্বো 800MHz এ সেট করা
+                      text = re.sub(r"<\s*(?:600000000|650000000)\s+7\s*>;", "< 800000000   7 >;  /* Turbo 800MHz */", text)
+                      text = re.sub(r"qcom,gpu-freq\s*=\s*<\s*(?:600000000|650000000)\s*>;", "qcom,gpu-freq = <800000000>;", text)
 
-          # [৩] msm8953-gpu.dtsi এবং msm8953.dtsi ফাইলে 800MHz ব্যাকআপ নিশ্চিত করা
-          for fname in ["msm8953-gpu.dtsi", "msm8953.dtsi"]:
-              fpath = os.path.join("arch/arm64/boot/dts/qcom", fname)
-              if os.path.exists(fpath):
-                  with open(fpath, "r") as f:
-                      text = f.read()
-                  text = re.sub(r"<\s*650000000\s+7\s*>;", "< 800000000   7 >;  /* Turbo 800MHz */", text)
-                  text = re.sub(r"qcom,gpu-freq\s*=\s*<\s*650000000\s*>;", "qcom,gpu-freq = <800000000>;", text)
-                  with open(fpath, "w") as f:
-                      f.write(text)
-                  print(f"[DTS OC] GPU 800MHz Unlocked in {fname}")
+                      # [৪] থার্মাল ড্রপ পয়েন্ট 48°C এ বৃদ্ধি
+                      text = re.sub(r"temperature\s*=\s*<\s*43000\s*>;", "temperature = <48000>;", text)
 
-          # [৪] থার্মাল থ্রোটলিং ৪৮°C (48000) করা
-          fpath = "arch/arm64/boot/dts/qcom/msm8953-thermal.dtsi"
-          if os.path.exists(fpath):
-              with open(fpath, "r") as f:
-                  text = f.read()
-              text = re.sub(r"cpus_trip:\s*cpus-trip\s*\{\s*temperature\s*=\s*<\s*43000\s*>;", "cpus_trip: cpus-trip {\n\t\t\t\ttemperature = <48000>;", text)
-              with open(fpath, "w") as f:
-                  f.write(text)
-              print("[DTS OC] Thermal Throttling trip point set to 48C in msm8953-thermal.dtsi")
+                      if text != orig:
+                          with open(fpath, "w") as f:
+                              f.write(text)
+                          print(f"[DTS OC] Successfully patched {file}")
           '
           cd ..
 
@@ -260,7 +240,7 @@ jobs:
           ui_print " ";
           EOF
 
-      # ৬. সম্পূর্ণ নেটহান্টার ড্রাইভার কনফিগারেশন (WiFi, BT, BadUSB, SDR, CAN)
+      # ৬. সম্পূর্ণ নেটহান্টার ড্রাইভার ও DTB অ্যাপেন্ড কনফিগারেশন
       - name: Configure All NetHunter & Performance Drivers
         run: |
           # Lexer ফিক্স
@@ -285,6 +265,8 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_CPU_FREQ_GOV_PERFORMANCE
           ./scripts/config --file out/.config --enable CONFIG_DEVFREQ_GOV_PERFORMANCE
           ./scripts/config --file out/.config --enable CONFIG_DEVFREQ_GOV_QCOM_ADRENO_TZ
+          ./scripts/config --file out/.config --enable CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE
+          ./scripts/config --file out/.config --enable CONFIG_BUILD_ARM64_DT_OVERLAY
 
           # [২] Chroot ও সিস্টেম কোর
           ./scripts/config --file out/.config --enable CONFIG_SYSVIPC
@@ -366,7 +348,6 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_CRC_CCITT
 
           # [৫] অল এক্সটারনাল ওয়াইফাই অ্যাডাপ্টার ড্রাইভারস
-          # Atheros (AR9271 / TP-Link WN722N v1 / AR7010 / AR9170 / AR6003)
           ./scripts/config --file out/.config --enable CONFIG_WLAN_VENDOR_ATH
           ./scripts/config --file out/.config --enable CONFIG_ATH_CARDS
           ./scripts/config --file out/.config --enable CONFIG_ATH_COMMON
@@ -381,8 +362,6 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_AR5523
           ./scripts/config --file out/.config --enable CONFIG_ATH6KL
           ./scripts/config --file out/.config --enable CONFIG_ATH6KL_USB
-
-          # Ralink / MediaTek (RT3070, RT5370, MT7601U, RT2870)
           ./scripts/config --file out/.config --enable CONFIG_WLAN_VENDOR_RALINK
           ./scripts/config --file out/.config --enable CONFIG_RT2X00
           ./scripts/config --file out/.config --enable CONFIG_RT2X00_LIB
@@ -399,8 +378,6 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_RT73USB
           ./scripts/config --file out/.config --enable CONFIG_WLAN_VENDOR_MEDIATEK
           ./scripts/config --file out/.config --enable CONFIG_MT7601U
-
-          # Realtek & ZyDAS (RTL8187, RTL8192CU, RTL8XXXU, R8188EU, ZD1211RW)
           ./scripts/config --file out/.config --enable CONFIG_WLAN_VENDOR_REALTEK
           ./scripts/config --file out/.config --enable CONFIG_RTL_CARDS
           ./scripts/config --file out/.config --enable CONFIG_RTL8187
@@ -456,8 +433,8 @@ jobs:
           make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" olddefconfig
           cd ..
 
-      # ৭. সম্পূর্ণ কার্নেল কম্পাইলেশন
-      - name: Compile Ultimate NetHunter Kernel
+      # ৭. সম্পূর্ণ কার্নেল ও DTB কম্পাইলেশন (Image.gz-dtb এবং dtbs তৈরি)
+      - name: Compile Ultimate NetHunter Kernel and DTBs
         run: |
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           export HOSTCFLAGS="-fcommon"
@@ -471,7 +448,8 @@ jobs:
                CROSS_COMPILE=aarch64-linux-android- \
                CROSS_COMPILE_ARM32=arm-linux-androideabi- \
                HOSTCFLAGS="-fcommon" \
-               HOSTCXXFLAGS="-fcommon"
+               HOSTCXXFLAGS="-fcommon" \
+               Image.gz Image.gz-dtb dtbs
           cd ..
 
       # ৮. স্পেশাল RTL8188FU (0bda:f179) ড্রাইভার ও মনিটর মোড কম্পাইলেশন
@@ -503,11 +481,18 @@ jobs:
           cp rtl8188fu/rtl8188fu.ko AnyKernel3/
           cp rtl8188fu/firmware/rtl8188fufw.bin AnyKernel3/
 
-      # ৯. রেডিমেড ফ্ল্যাশেবল জিপ তৈরি
-      - name: Package Ready-To-Flash NetHunter Zip
+      # ৯. রেডিমেড ফ্ল্যাশেবল জিপ তৈরি (Kernel + ২.২ GHz DTB ইনজেকশন)
+      - name: Package Ready-To-Flash NetHunter Zip with New DTB Image
         run: |
+          # ১. নতুন কম্পাইল হওয়া সব DTB একত্রিত করে AnyKernel3/dtb তৈরি করা (Boot Header v2 এর জন্য)
+          cat kernel/out/arch/arm64/boot/dts/qcom/sdm450*.dtb > AnyKernel3/dtb 2>/dev/null || cat kernel/out/arch/arm64/boot/dts/qcom/*.dtb > AnyKernel3/dtb 2>/dev/null || true
+          
+          # ২. কার্নেল বাইনারি কপি করা
+          cp -f kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || true
+          cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || true
+          cp -f kernel/out/arch/arm64/boot/Image AnyKernel3/ 2>/dev/null || true
+          
           cd AnyKernel3
-          cp ../kernel/out/arch/arm64/boot/Image.gz-dtb . || cp ../kernel/out/arch/arm64/boot/Image.gz . || cp ../kernel/out/arch/arm64/boot/Image .
           zip -r9 ../Kali-NetHunter-Titan-OC-Master.zip * -x .git README.md *placeholder
           cd ..
 
