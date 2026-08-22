@@ -247,7 +247,7 @@ jobs:
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.lex.c_shipped || true
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.l || true
 
-          # নিখুঁত কার্নেল নাম (৬৪ ক্যারেক্টার লিমিটের ভেতরে ফিক্সড)
+          # নিখুঁত কার্নেল নাম (৬৪ অক্ষরের লিমিটের ভেতর ফিক্সড)
           sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Titan-OC-2.2G-800M-by-Plabon"/' kernel/arch/arm64/configs/m11q_open_defconfig
 
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
@@ -431,8 +431,8 @@ jobs:
           make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" olddefconfig
           cd ..
 
-      # ৭. সম্পূর্ণ কার্নেল ও DTB কম্পাইলেশন (১০০% ক্লিন মেক ইঞ্জিন)
-      - name: Compile Ultimate NetHunter Kernel
+      # ৭. সম্পূর্ণ কার্নেল ও আসল DTB কম্পাইলেশন
+      - name: Compile Ultimate NetHunter Kernel and DTBs
         run: |
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           export HOSTCFLAGS="-fcommon"
@@ -441,12 +441,22 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
+          # ১. কার্নেল কম্পাইল করা
           make -j$(nproc --all) O=out \
                ARCH=arm64 \
                CROSS_COMPILE=aarch64-linux-android- \
                CROSS_COMPILE_ARM32=arm-linux-androideabi- \
                HOSTCFLAGS="-fcommon" \
                HOSTCXXFLAGS="-fcommon"
+          
+          # ২. সমস্ত ডিভাইস ট্রি বাইনারি (DTB) সরাসরি তৈরি করা
+          make -j$(nproc --all) O=out \
+               ARCH=arm64 \
+               CROSS_COMPILE=aarch64-linux-android- \
+               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+               HOSTCFLAGS="-fcommon" \
+               HOSTCXXFLAGS="-fcommon" \
+               dtbs || true
           cd ..
 
       # ৮. স্পেশাল RTL8188FU (0bda:f179) ড্রাইভার ও মনিটর মোড কম্পাইলেশন
@@ -478,21 +488,22 @@ jobs:
           cp rtl8188fu/rtl8188fu.ko AnyKernel3/
           cp rtl8188fu/firmware/rtl8188fufw.bin AnyKernel3/
 
-      # ৯. রেডিমেড ফ্ল্যাশেবল ফাইল প্যাকেজিং (DTB এবং কার্নেল একত্রিতকরণ)
+      # ৯. রেডিমেড ফ্ল্যাশেবল ফাইল প্যাকেজিং (স্লিম ১৮ MB ও আসল ২.২ GHz DTB ফিক্স)
       - name: Prepare Single Ready-To-Flash AnyKernel3 Package
         run: |
-          # ১. কমপাইল হওয়া সমস্ত ২.২ GHz ও ৮০০ MHz DTB একত্রিত করে AnyKernel3/dtb তৈরি করা
-          find kernel/out/arch/arm64/boot/dts/qcom/ -name "*.dtb" -exec cat {} + > AnyKernel3/dtb 2>/dev/null || true
+          # ১. কমপাইল হওয়া সমস্ত আসল ২.২ GHz ও ৮০০ MHz DTB একত্রিত করে AnyKernel3/dtb তৈরি করা
+          find kernel/out/arch/arm64/boot/dts/ -name "*.dtb" -exec cat {} + > AnyKernel3/dtb 2>/dev/null || true
           
-          # ২. কার্নেল বাইনারি AnyKernel3 তে পাঠানো
-          cp -f kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || true
-          cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || true
-          cp -f kernel/out/arch/arm64/boot/Image AnyKernel3/ 2>/dev/null || true
+          # যদি কোনো কারণে dtb ফাইল খালি থাকে তবে তা ডিলিট করা
+          [ -s AnyKernel3/dtb ] || rm -f AnyKernel3/dtb
+          
+          # ২. শুধুমাত্র প্রয়োজনীয় কম্প্রেসড কার্নেল ইমেজ কপি করা (অপ্রয়োজনীয় ৪৩ MB র-Image ফাইল বাদ)
+          cp -f kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || true
           
           # ৩. গিট ক্যাশ ও অপ্রয়োজনীয় ফাইল ক্লিন করা
           rm -rf AnyKernel3/.git AnyKernel3/README.md AnyKernel3/*placeholder
 
-      # ১০. সরাসরি সিঙ্গেল ফ্ল্যাশেবল জিপ আপলোড (ডাবল জিপ ফিক্স)
+      # ১০. সরাসরি ১৮ MB-র সিঙ্গেল ফ্ল্যাশেবল জিপ আপলোড
       - name: Upload Single Ready-To-Flash NetHunter Zip
         uses: actions/upload-artifact@v4
         with:
