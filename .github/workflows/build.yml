@@ -162,7 +162,7 @@ jobs:
           ### AnyKernel3 Ramdisk Mod Script
           ## Custom NetHunter Titan Extreme Edition by Plabon Roy
           properties() { '
-          kernel.string=Kali NetHunter Titan Extreme OC by Plabon Roy
+          kernel.string=Kali NetHunter Titan OC by Plabon Roy
           do.devicecheck=1
           do.modules=0
           do.systemless=0
@@ -247,8 +247,8 @@ jobs:
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.lex.c_shipped || true
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.l || true
 
-          # আল্টিমেট পাওয়ারফুল কার্নেল নাম (About Phone এর জন্য)
-          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Titan-Extreme-OC-2.2GHz-800MHz-Powered-by-Plabon"/' kernel/arch/arm64/configs/m11q_open_defconfig
+          # নিখুঁত কার্নেল নাম (৬৪ ক্যারেক্টার লিমিটের ভেতরে ফিক্সড)
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Titan-OC-2.2G-800M-by-Plabon"/' kernel/arch/arm64/configs/m11q_open_defconfig
 
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           export HOSTCFLAGS="-fcommon"
@@ -496,5 +496,5 @@ jobs:
       - name: Upload Single Ready-To-Flash NetHunter Zip
         uses: actions/upload-artifact@v4
         with:
-          name: Kali-NetHunter-Titan-Extreme-OC-Master
+          name: Kali-NetHunter-Titan-OC-Master
           path: AnyKernel3/
