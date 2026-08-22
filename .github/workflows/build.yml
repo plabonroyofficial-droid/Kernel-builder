@@ -132,7 +132,7 @@ jobs:
                           text = f.read()
 
                       orig = text
-                      # [১] CPU speed-bin ওভারক্লক (1.8GHz ও 2.0GHz কে 2.2GHz এ বর্ধিত করা)
+                      # [১] CPU speed-bin ওভারক্লক
                       text = re.sub(r"<\s*1804800000\s+\d+\s*>", r"< 1804800000 5>" + full_cl, text)
                       text = re.sub(r"<\s*2016000000\s+\d+\s*>", r"< 2016000000 7>, < 2150400000 8>, < 2208000000 9>", text)
 
@@ -247,7 +247,7 @@ jobs:
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.lex.c_shipped || true
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.l || true
 
-          # নিখুঁত কার্নেল নাম (৬৪ অক্ষরের লিমিটের ভেতর ফিক্সড)
+          # নিখুঁত কার্নেল নাম
           sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Titan-OC-2.2G-800M-by-Plabon"/' kernel/arch/arm64/configs/m11q_open_defconfig
 
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
@@ -431,8 +431,8 @@ jobs:
           make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" olddefconfig
           cd ..
 
-      # ৭. সম্পূর্ণ কার্নেল ও আসল DTB কম্পাইলেশন (বাধ্যতামূলক dtbs জেনারেশন)
-      - name: Compile Ultimate NetHunter Kernel and DTBs
+      # ৭. সম্পূর্ণ কার্নেল ও DTB কম্পাইলেশন
+      - name: Compile Ultimate NetHunter Kernel
         run: |
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           export HOSTCFLAGS="-fcommon"
@@ -441,22 +441,12 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # ১. কার্নেল কম্পাইল করা
           make -j$(nproc --all) O=out \
                ARCH=arm64 \
                CROSS_COMPILE=aarch64-linux-android- \
                CROSS_COMPILE_ARM32=arm-linux-androideabi- \
                HOSTCFLAGS="-fcommon" \
                HOSTCXXFLAGS="-fcommon"
-          
-          # ২. সমস্ত ডিভাইস ট্রি বাইনারি (DTB) সরাসরি তৈরি করা
-          make -j$(nproc --all) O=out \
-               ARCH=arm64 \
-               CROSS_COMPILE=aarch64-linux-android- \
-               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-               HOSTCFLAGS="-fcommon" \
-               HOSTCXXFLAGS="-fcommon" \
-               dtbs
           cd ..
 
       # ৮. স্পেশাল RTL8188FU (0bda:f179) ড্রাইভার ও মনিটর মোড কম্পাইলেশন
@@ -488,13 +478,36 @@ jobs:
           cp rtl8188fu/rtl8188fu.ko AnyKernel3/
           cp rtl8188fu/firmware/rtl8188fufw.bin AnyKernel3/
 
-      # ৯. রেডিমেড ফ্ল্যাশেবল ফাইল প্যাকেজিং (স্লিম ১৮ MB ও আসল ২.২ GHz DTB ইনজেকশন)
+      # ৯. পাইথন দিয়ে সরাসরি Image.gz-dtb থেকে আসল DTB এক্সট্রাকশন ও স্লিম প্যাকেজিং
       - name: Prepare Single Ready-To-Flash AnyKernel3 Package
         run: |
-          # ১. out ডিরেক্টরি থেকে সমস্ত আসল .dtb খুঁজে AnyKernel3/dtb ফাইলে মার্জ করা
-          find kernel/out/ -name "*.dtb" -not -name "Image.gz-dtb" -not -name "Image-dtb" -exec cat {} + > AnyKernel3/dtb 2>/dev/null || true
+          # ১. পাইথন দিয়ে Image.gz-dtb ফাইলের ভেতর থেকে আসল ২.২ GHz DTB এক্সট্রাক্ট করা
+          python3 -c '
+          import os
+          magic = b"\xd0\r\xfe\xed"
+          found = False
+          for kfile in ["kernel/out/arch/arm64/boot/Image.gz-dtb", "kernel/out/arch/arm64/boot/Image-dtb"]:
+              if os.path.exists(kfile):
+                  with open(kfile, "rb") as f:
+                      data = f.read()
+                  idx = data.find(magic)
+                  if idx != -1:
+                      dtb_data = data[idx:]
+                      with open("AnyKernel3/dtb", "wb") as f_out:
+                          f_out.write(dtb_data)
+                      print(f"[DTB SUCCESS] Extracted {len(dtb_data)} bytes of DTB into AnyKernel3/dtb")
+                      found = True
+                      break
+          if not found:
+              print("[DTB SEARCH] Searching directory for raw .dtb files...")
+              import subprocess
+              subprocess.run("find kernel/out/ -name \"*.dtb\" -not -name \"Image.gz-dtb\" -not -name \"Image-dtb\" -exec cat {} + > AnyKernel3/dtb 2>/dev/null || true", shell=True)
+          '
           
-          # ২. শুধুমাত্র প্রয়োজনীয় কম্প্রেসড কার্নেল ইমেজ কপি করা (বড় ৪৩ MB র-Image ফাইল বাদ)
+          # যদি কোনো কারণে ০ বাইট ফাইল থাকে তবে মুছে ফেলা
+          [ -s AnyKernel3/dtb ] || rm -f AnyKernel3/dtb
+          
+          # ২. শুধুমাত্র প্রয়োজনীয় কম্প্রেসড কার্নেল ইমেজ কপি করা (বড় ৪৩ MB র-Image বাদ)
           cp -f kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || true
           
           # ৩. গিট ক্যাশ ও অপ্রয়োজনীয় ফাইল ক্লিন করা
