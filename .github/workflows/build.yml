@@ -1,4 +1,4 @@
-name: Build Kali NetHunter Titan OC Kernel (Powered by Plabon)
+Name: Build Kali NetHunter Titan OC Kernel (Powered by Plabon)
 
 on:
   workflow_dispatch:
@@ -545,22 +545,25 @@ jobs:
           cp rtl8188fu/rtl8188fu.ko AnyKernel3/
           cp rtl8188fu/firmware/rtl8188fufw.bin AnyKernel3/
 
-      # ৯. ১০০% সেইফ কার্নেল প্যাকেজিং (Image.gz এর সাথে ২.২ GHz DTB ফোর্স মার্জ করা)
+      # ৯. ১০০% সেইফ কার্নেল প্যাকেজিং (Image.gz এর সাথে ২.২ GHz DTB নিরাপদ মার্জিং ফিক্স)
       - name: Prepare Clean & Safe Flashable AnyKernel3 Package
         run: |
-          # ১. ডাইনামিকালি DTB ফাইল এবং Image.gz খুঁজে নেওয়া
-          DTB_FILE=$(find kernel/out/arch/arm64/boot/dts/ -name "*sdm450*.dtb" -o -name "*m11*.dtb" | head -n 1)
-          if [ -z "$DTB_FILE" ]; then
-            DTB_FILE=$(find kernel/out/arch/arm64/boot/dts/ -name "*.dtb" | head -n 1)
-          fi
-          
-          IMAGE_FILE="kernel/out/arch/arm64/boot/Image.gz"
-          if [ ! -f "$IMAGE_FILE" ]; then
-            IMAGE_FILE=$(find kernel/out/arch/arm64/boot/ -name "Image.gz" | head -n 1)
+          # ১. ডাইনামিকালি Image.gz এবং DTB ফাইল খুঁজে নেওয়া
+          IMAGE_FILE=$(find kernel/out/ -type f -name "Image.gz" | head -n 1)
+          if [ -z "$IMAGE_FILE" ]; then
+            IMAGE_FILE="kernel/out/arch/arm64/boot/Image.gz"
           fi
 
-          # ২. কার্নেল ইমেজের সাথে DTB মার্জ করে ফাইনাল বাইনারি তৈরি
-          cat "$IMAGE_FILE" "$DTB_FILE" > AnyKernel3/Image.gz-dtb
+          DTB_FILES=$(find kernel/out/ -type f -name "*.dtb" 2>/dev/null)
+
+          # ২. DTB ফাইল থাকলে Image.gz এর সাথে মার্জ করবে, অন্যথায় সরাসরি Image.gz ব্যবহার করবে
+          if [ -n "$DTB_FILES" ]; then
+            echo "[+] DTB file(s) found, merging with Image.gz..."
+            cat "$IMAGE_FILE" $DTB_FILES > AnyKernel3/Image.gz-dtb
+          else
+            echo "[!] No DTB files found. Copying Image.gz as Image.gz-dtb..."
+            cp "$IMAGE_FILE" AnyKernel3/Image.gz-dtb
+          fi
           
           # ৩. আলাদা dtb ফাইল এবং এক্সট্রা কোনো নরমাল ইমেজ সম্পূর্ণ ডিলিট করা
           rm -f AnyKernel3/dtb AnyKernel3/Image.gz AnyKernel3/zImage AnyKernel3/Image
