@@ -473,18 +473,13 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # ওল্ড ক্যাশ বাইপাস নিশ্চিত করতে প্রতিবার ফ্রেশ ক্লিন বিল্ড করা
-          make mrproper
-          make clean
-          make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" m11q_open_defconfig
-          
-          # কার্নেল ও নতুন ওভারক্লকড DTB একসাথে মেক করা
+          # কার্নেল (Image.gz) ও নতুন ওভারক্লকড DTB একসাথে মেক করা
           make -j$(nproc --all) O=out \
                ARCH=arm64 \
                CROSS_COMPILE=aarch64-linux-android- \
                CROSS_COMPILE_ARM32=arm-linux-androideabi- \
                HOSTCFLAGS="-fcommon" \
-               HOSTCXXFLAGS="-fcommon" dtbs
+               HOSTCXXFLAGS="-fcommon" Image.gz dtbs
           cd ..
 
       # ৮. স্পেশাল আনলকড ও ম্যাক্স-পাওয়ার RTL8188FU ওয়াইফাই হ্যাকিং ড্রাইভার বিল্ড
@@ -553,13 +548,24 @@ jobs:
       # ৯. ১০০% সেইফ কার্নেল প্যাকেজিং (Image.gz এর সাথে ২.২ GHz DTB ফোর্স মার্জ করা)
       - name: Prepare Clean & Safe Flashable AnyKernel3 Package
         run: |
-          # ১. নতুন তৈরি হওয়া ওভারক্লকড sdm450-mtp.dtb ফাইলটি কার্নেল ইমেজের সাথে ক্যাট (Append) করে ফাইনাল বাইনারি তৈরি করা
-          cat kernel/out/arch/arm64/boot/Image.gz kernel/out/arch/arm64/boot/dts/qcom/sdm450-mtp.dtb > AnyKernel3/Image.gz-dtb
+          # ১. ডাইনামিকালি DTB ফাইল এবং Image.gz খুঁজে নেওয়া
+          DTB_FILE=$(find kernel/out/arch/arm64/boot/dts/ -name "*sdm450*.dtb" -o -name "*m11*.dtb" | head -n 1)
+          if [ -z "$DTB_FILE" ]; then
+            DTB_FILE=$(find kernel/out/arch/arm64/boot/dts/ -name "*.dtb" | head -n 1)
+          fi
           
-          # ২. আলাদা dtb ফাইল এবং এক্সট্রা কোনো নরমাল ইমেজ সম্পূর্ণ ডিলিট করা যাতে স্যামসাং বুটলোডার লক না মারে
+          IMAGE_FILE="kernel/out/arch/arm64/boot/Image.gz"
+          if [ ! -f "$IMAGE_FILE" ]; then
+            IMAGE_FILE=$(find kernel/out/arch/arm64/boot/ -name "Image.gz" | head -n 1)
+          fi
+
+          # ২. কার্নেল ইমেজের সাথে DTB মার্জ করে ফাইনাল বাইনারি তৈরি
+          cat "$IMAGE_FILE" "$DTB_FILE" > AnyKernel3/Image.gz-dtb
+          
+          # ৩. আলাদা dtb ফাইল এবং এক্সট্রা কোনো নরমাল ইমেজ সম্পূর্ণ ডিলিট করা
           rm -f AnyKernel3/dtb AnyKernel3/Image.gz AnyKernel3/zImage AnyKernel3/Image
           
-          # ৩. গিট ক্যাশ ও অপ্রয়োজনীয় ফাইল ক্লিন করা
+          # ৪. গিট ক্যাশ ও অপ্রয়োজনীয় ফাইল ক্লিন করা
           rm -rf AnyKernel3/.git AnyKernel3/README.md AnyKernel3/*placeholder
 
       # ১০. সরাসরি ১৮ MB-র সিঙ্গেল ফ্ল্যাশেবল জিপ আপলোড
