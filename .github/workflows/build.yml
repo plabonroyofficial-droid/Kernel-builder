@@ -1,4 +1,4 @@
-Name: Build Kali NetHunter Titan OC Kernel (Powered by Plabon)
+name: Build Kali NetHunter Titan OC Kernel (Powered by Plabon)
 
 on:
   workflow_dispatch:
