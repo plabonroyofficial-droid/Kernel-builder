@@ -136,7 +136,7 @@ jobs:
           
           # KernelSU এবং OverlayFS ফ্ল্যাগ নিশ্চিত করা
           echo "CONFIG_KSU=y" >> kernel/arch/arm64/configs/m11q_open_defconfig
-          echo "CONFIG_OVERLAY_FS=y" >> kernel/arch/arm64/configs/m11q_open_defconfig
+          echo "CONFIG_OVERLAY_FS=y" >> kernel/arch/arm64/configs/a11q_open_defconfig
           
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           export HOSTCFLAGS="-fcommon"
