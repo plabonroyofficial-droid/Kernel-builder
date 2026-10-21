@@ -125,17 +125,17 @@ jobs:
           find kernel/include/ -type f -name "compiler*.h" -exec sed -i '/Sorry, your version of GCC is too old/d' {} + || true
           
           # নিখুঁত কার্নেল নাম
-          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Titan-OC-2.0G-650M-by-Plabon"/' kernel/arch/arm64/configs/m11q_open_defconfig
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Titan-OC-2.0G-650M-by-Plabon"/' kernel/arch/arm64/configs/a11q_open_defconfig
           
           # স্যামসাং থার্মাল ও নক্স ওভাররাইড (ভোল্টেজ স্কেলিং ঠিক রাখতে CPR অন রাখা হয়েছে)
-          echo "CONFIG_SEC_THERMAL=n" >> kernel/arch/arm64/configs/m11q_open_defconfig
-          echo "CONFIG_SEC_RESTRICT_FORK=n" >> kernel/arch/arm64/configs/m11q_open_defconfig
-          echo "CONFIG_TIMA=n" >> kernel/arch/arm64/configs/m11q_open_defconfig
-          sed -i 's/CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y/# CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL is not set/g' kernel/arch/arm64/configs/m11q_open_defconfig || true
-          echo "CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y" >> kernel/arch/arm64/configs/m11q_open_defconfig
+          echo "CONFIG_SEC_THERMAL=n" >> kernel/arch/arm64/configs/a11q_open_defconfig
+          echo "CONFIG_SEC_RESTRICT_FORK=n" >> kernel/arch/arm64/configs/a11q_open_defconfig
+          echo "CONFIG_TIMA=n" >> kernel/arch/arm64/configs/a11q_open_defconfig
+          sed -i 's/CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y/# CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL is not set/g' kernel/arch/arm64/configs/a11q_open_defconfig || true
+          echo "CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y" >> kernel/arch/arm64/configs/a11q_open_defconfig
           
           # KernelSU এবং OverlayFS ফ্ল্যাগ নিশ্চিত করা
-          echo "CONFIG_KSU=y" >> kernel/arch/arm64/configs/m11q_open_defconfig
+          echo "CONFIG_KSU=y" >> kernel/arch/arm64/configs/a11q_open_defconfig
           echo "CONFIG_OVERLAY_FS=y" >> kernel/arch/arm64/configs/a11q_open_defconfig
           
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
@@ -145,8 +145,8 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # বেস ডিফকনফিগ লোড
-          make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" m11q_open_defconfig
+          # বেস ডিফকনফিগ লোড (a11q_open_defconfig)
+          make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" a11q_open_defconfig
           
           # [১] সিপিইউ ও জিপিইউ পারফরম্যান্স গভর্ণর
           ./scripts/config --file out/.config --enable CONFIG_CPU_BOOST
