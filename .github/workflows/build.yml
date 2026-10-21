@@ -19,151 +19,60 @@ jobs:
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 -b lineage-19.1 gcc64
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 -b lineage-19.1 gcc32
 
-      # ২. কার্নেল সোর্স কোড ক্লোন
+      # ২. কার্নেল সোর্স কোড ক্লোন (সরাসরি KSU হুক সম্বলিত ব্রাঞ্চ থেকে)
       - name: Clone Samsung M11 Kernel Source
         run: |
-          git clone https://github.com/ifoodplayer/android_kernel_samsung_sdm450 kernel
-          cd kernel
-          git checkout 182f7ee || true
-          cd ..
+          git clone -b KernelSU-old --depth=1 https://github.com/ifoodplayer/android_kernel_samsung_sdm450 kernel
 
-      # ৩. KernelSU-Next সেটআপ ও নিরাপদ পাইথন হুক ইনজেকশন (Kernel 4.9)
+      # ৩. KernelSU-Next সেটআপ ও ডিফকনফিগ কনফিগারেশন
       - name: Setup KernelSU-Next & Advanced Manual Hooks
         run: |
           cd kernel
-          # KernelSU-Next অফিশিয়াল স্ক্রিপ্ট ও সিমলিংক সেটআপ
+          # KernelSU-Next অফিশিয়াল স্ক্রিপ্ট রান করা
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next || {
-            git clone https://github.com/KernelSU-Next/KernelSU-Next KernelSU-Next
+            git clone -b next --depth=1 https://github.com/KernelSU-Next/KernelSU-Next KernelSU-Next
             ln -sf ../KernelSU-Next/kernel drivers/kernelsu
             grep -q "drivers/kernelsu/Kconfig" drivers/Kconfig || sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
             grep -q "kernelsu" drivers/Makefile || echo "obj-\$(CONFIG_KSU) += kernelsu/" >> drivers/Makefile
           }
-          
-          # পাইথন দিয়ে fs/open.c, fs/read_write.c এবং fs/stat.c তে ১০০% এররবিহীন হুক ইনজেক্ট
-          python3 -c '
-          import os
 
-          # 1. Patch fs/open.c
-          if os.path.exists("fs/open.c"):
-              with open("fs/open.c", "r") as f:
-                  lines = f.readlines()
-              new_lines = []
-              hook_open = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_openat(int dfd, const char __user *filename, int flags, umode_t mode);\nksu_handle_openat(dfd, filename, flags, mode);\n#endif\n"
-              in_do_sys_open = False
-              hook_inserted = False
-              for line in lines:
-                  new_lines.append(line)
-                  if "do_sys_open(" in line:
-                      in_do_sys_open = True
-                  if in_do_sys_open and not hook_inserted and "getname(" in line:
-                      new_lines.append(hook_open)
-                      hook_inserted = True
-                  if in_do_sys_open and line.startswith("}"):
-                      in_do_sys_open = False
-              with open("fs/open.c", "w") as f:
-                  f.writelines(new_lines)
-              print("[KSU] fs/open.c patched successfully")
-
-          # 2. Patch fs/read_write.c
-          if os.path.exists("fs/read_write.c"):
-              with open("fs/read_write.c", "r") as f:
-                  lines = f.readlines()
-              new_lines = []
-              hook_read = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos);\nksu_handle_vfs_read(file, buf, count, pos);\n#endif\n"
-              in_vfs_read = False
-              hook_inserted = False
-              for line in lines:
-                  if "vfs_read(" in line:
-                      in_vfs_read = True
-                  if in_vfs_read and not hook_inserted and "return ret;" in line:
-                      new_lines.append(hook_read)
-                      hook_inserted = True
-                  new_lines.append(line)
-                  if in_vfs_read and line.startswith("}"):
-                      in_vfs_read = False
-              with open("fs/read_write.c", "w") as f:
-                  f.writelines(new_lines)
-              print("[KSU] fs/read_write.c patched successfully")
-
-          # 3. Patch fs/stat.c
-          if os.path.exists("fs/stat.c"):
-              with open("fs/stat.c", "r") as f:
-                  lines = f.readlines()
-              new_lines = []
-              hook_stat = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_stat(int dfd, const char __user *filename, int flags);\nksu_handle_stat(dfd, filename, flags);\n#endif\n"
-              in_stat = False
-              hook_inserted = False
-              for line in lines:
-                  if "vfs_statx(" in line or "vfs_fstatat(" in line:
-                      in_stat = True
-                  if in_stat and not hook_inserted and ("return error;" in line or "return ret;" in line or "return 0;" in line):
-                      new_lines.append(hook_stat)
-                      hook_inserted = True
-                  new_lines.append(line)
-                  if in_stat and line.startswith("}"):
-                      in_stat = False
-              with open("fs/stat.c", "w") as f:
-                  f.writelines(new_lines)
-              print("[KSU] fs/stat.c patched successfully")
-          '
-          
-          # ডিফকনফিগে KSU ফ্ল্যাগ যোগ
+          # ডিফকনফিগে KernelSU-Next ও OverlayFS এনশিওর করা
           echo "CONFIG_KSU=y" >> arch/arm64/configs/m11q_open_defconfig
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> arch/arm64/configs/m11q_open_defconfig
           echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/m11q_open_defconfig
+          echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/m11q_open_defconfig
           cd ..
 
-      # ৪. কার্নেল ড্রাইভার C-কোডে Speed-Bin 7 ফোর্স করা এবং DTS-এ 2.2GHz & 800MHz ইনজেক্ট
-      - name: Force Speed-Bin 7 in C Driver & Overclock DTS to 2.2GHz, 800MHz, 48C
+      # ৪. CPU 2.016 GHz ও GPU 650 MHz রিয়েল ওভারক্লক অটো-প্যাচ (Fork ছাড়া সরাসরি এডিট)
+      - name: Apply Safe CPU (2.016GHz) & GPU (650MHz) Overclock
         run: |
           cd kernel
+
+          # [১] GPU 650 MHz আনলক (sdm450.dtsi তে 600MHz ক্যাপ সরিয়ে 650MHz টার্বো সেট করা)
+          sed -i 's/600000000/650000000/g' arch/arm64/boot/dts/qcom/sdm450.dtsi
+          echo "[+] GPU successfully unlocked to 650 MHz Turbo"
+
+          # [২] CPU 2.016 GHz আনলক (msm8953.dtsi তে speed6 টেবিলে লেভেল ৬ ও ৭ এবং CCI ক্যাশ বাস সিঙ্ক করা)
           python3 -c '
-          import os, re
+          fpath = "arch/arm64/boot/dts/qcom/msm8953.dtsi"
+          with open(fpath, "r") as f:
+              text = f.read()
 
-          # [১] drivers/clk/msm/clock-cpu-8953.c ফাইলে সরাসরি 2.2 GHz (speed7-bin-v0) হার্ডকোড ফোর্স করা
-          for clk_file in ["drivers/clk/msm/clock-cpu-8953.c", "drivers/clk/qcom/clock-cpu-8953.c"]:
-              if os.path.exists(clk_file):
-                  with open(clk_file, "r") as f:
-                      clk_text = f.read()
-                  clk_text = re.sub(r"speed_bin\s*=\s*\([^;]+\);", "speed_bin = 7; /* Forced SD626 2.208GHz */", clk_text)
-                  clk_text = re.sub(r"version\s*=\s*\([^;]+\);", "version = 0;", clk_text)
-                  clk_text = re.sub(r"qcom,speed%d-bin-v%d-%s", "qcom,speed7-bin-v0-%s", clk_text)
-                  with open(clk_file, "w") as f:
-                      f.write(clk_text)
-                  print(f"[CPU C-DRIVER] Successfully forced speed_bin = 7 in {clk_file}")
+          # CPU ক্লাস্টার ক্লকে 1.958 GHz (লেভেল ৬) এবং 2.016 GHz (লেভেল ৭) যোগ করা
+          text = text.replace(
+              "< 1804800000 5>;",
+              "< 1804800000 5>,\n\t\t\t< 1958400000 6>,\n\t\t\t< 2016000000 7>;"
+          )
 
-          # [২] সমস্ত DTS/DTSI ফাইলে CPU, GPU ও থার্মাল ওভারক্লক ফোর্স করা
-          dts_dirs = ["arch/arm64/boot/dts/qcom", "arch/arm64/boot/dts/samsung"]
-          full_cl = ", < 1958400000 6>, < 2016000000 7>, < 2150400000 8>, < 2208000000 9>"
-          full_cci = ", < 783360000 6>, < 806400000 7>, < 860160000 8>, < 883200000 9>"
+          # CCI ক্যাশ বাসে সমপরিমাণ 40% ক্লক সিঙ্ক করা (783.36MHz এবং 806.40MHz)
+          text = text.replace(
+              "<  721920000 5>;",
+              "<  721920000 5>,\n\t\t\t<  783360000 6>,\n\t\t\t<  806400000 7>;"
+          )
 
-          for target_dir in dts_dirs:
-              if os.path.exists(target_dir):
-                  for root, _, files in os.walk(target_dir):
-                      for file in files:
-                          if file.endswith(".dts") or file.endswith(".dtsi"):
-                              fpath = os.path.join(root, file)
-                              with open(fpath, "r", errors="ignore") as f:
-                                  text = f.read()
-
-                              orig = text
-                              text = re.sub(r"<\s*1804800000\s+\d+\s*>", r"< 1804800000 5>" + full_cl, text)
-                              text = re.sub(r"<\s*2016000000\s+\d+\s*>", r"< 2016000000 7>, < 2150400000 8>, < 2208000000 9>", text)
-                              text = re.sub(r"<\s*721920000\s+\d+\s*>", r"< 721920000 5>" + full_cci, text)
-                              text = re.sub(r"<\s*806400000\s+\d+\s*>", r"< 806400000 7>, < 860160000 8>, < 883200000 9>", text)
-                              text = re.sub(r"<\s*(?:600000000|650000000)\s+7\s*>;", "< 800000000   7 >;  /* Turbo 800MHz */", text)
-                              text = re.sub(r"qcom,gpu-freq\s*=\s*<\s*(?:600000000|650000000)\s*>;", "qcom,gpu-freq = <800000000>;", text)
-                              text = re.sub(r"temperature\s*=\s*<\s*43000\s*>;", "temperature = <48000>;", text)
-
-                              if text != orig:
-                                  with open(fpath, "w") as f:
-                                      f.write(text)
-                                  print(f"[DTS GLOBAL OC] Successfully patched {file} in {target_dir}")
+          with open(fpath, "w") as f:
+              f.write(text)
+          print("[+] CPU boosted to 2.016 GHz with fully synced CCI")
           '
-          
-          # [৩] এনার্জি কস্ট ও মেইন ক্লক রেগুলেটর সিপিউ টেবিলে ২.২ GHz ফ্রিকোয়েন্সি এন্ট্রি ঢুকিয়ে দেওয়া
-          find arch/arm64/boot/dts/qcom/ -type f -name "*.dts*" -exec sed -i 's/0x21b100 0x2c 0x249f00 0x41/0x21b100 0x2c 0x21ac15 0x36 0x249f00 0x41/g' {} +
-          find arch/arm64/boot/dts/samsung/ -type f -name "*.dts*" -exec sed -i 's/0x21b100 0x2c 0x249f00 0x41/0x21b100 0x2c 0x21ac15 0x36 0x249f00 0x41/g' {} +
           cd ..
 
       # ৫. AnyKernel3 কনফিগারেশন (System + Vendor ড্রাইভার অটো-ইন্সটল ও পারমিশন ফিক্স)
@@ -197,11 +106,11 @@ jobs:
           ui_print " ";
           ui_print "============================================";
           ui_print " KALI NETHUNTER TITAN EXTREME MASTER OC ";
-          ui_print " CPU: 2.2GHz Max | GPU: 800MHz Turbo ";
+          ui_print " CPU: 2.016GHz Max | GPU: 650MHz Turbo ";
           ui_print "============================================";
           ui_print " [•] Lead Developer : Plabon Roy";
           ui_print " [•] GitHub Profile : github.com/plabonroyofficial";
-          ui_print " [•] Kernel Build : Linux 4.9.186 NetHunter";
+          ui_print " [•] Kernel Build : Linux 4.9 NetHunter Titan";
           ui_print " [•] Capabilities : WiFi Injection | BadUSB | BT";
           ui_print "============================================";
           ui_print " ";
@@ -218,7 +127,7 @@ jobs:
           mkdir -p /system/lib/modules /vendor/lib/modules /system/vendor/lib/modules
           mkdir -p /vendor/firmware/rtlwifi /system/etc/firmware/rtlwifi /lib/firmware/rtlwifi /etc/firmware/rtlwifi
 
-          # ২. সব ফোল্ডারের জন্য সরাসরি 755 পারমিশন নিশ্চিত করা (drwxr-xr-x)
+          # ২. সব ফোল্ডারের জন্য 755 পারমিশন নিশ্চিত করা
           chmod 755 /system/lib/modules /vendor/lib/modules /system/vendor/lib/modules
           chmod 755 /vendor/firmware /vendor/firmware/rtlwifi
           chmod 755 /system/etc/firmware /system/etc/firmware/rtlwifi
@@ -236,7 +145,7 @@ jobs:
           cp -f /tmp/anykernel/rtl8188fufw.bin /lib/firmware/rtlwifi/ 2>/dev/null || true
           cp -f /tmp/anykernel/rtl8188fufw.bin /etc/firmware/rtlwifi/ 2>/dev/null || true
 
-          # ৫. সব .ko এবং .bin ফাইলের জন্য সরাসরি 644 পারমিশন নিশ্চিত করা (-rw-r--r--)
+          # ৫. সব .ko এবং .bin ফাইলের জন্য 644 পারমিশন নিশ্চিত করা
           chmod 644 /system/lib/modules/rtl8188fu.ko 2>/dev/null || true
           chmod 644 /vendor/lib/modules/rtl8188fu.ko 2>/dev/null || true
           chmod 644 /system/vendor/lib/modules/rtl8188fu.ko 2>/dev/null || true
@@ -252,7 +161,7 @@ jobs:
           ui_print " ";
           EOF
 
-      # ৬. সম্পূর্ণ নেটহান্টার ড্রাইভার ও স্যামসাং থার্মাল/পাওয়ার আনলক কনফিগারেশন
+      # ৬. সম্পূর্ণ নেটহান্টার ড্রাইভার ও পারফরম্যান্স কনফিগারেশন
       - name: Configure All NetHunter & Performance Drivers
         run: |
           # Lexer ফিক্স
@@ -260,11 +169,9 @@ jobs:
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/' kernel/scripts/dtc/dtc-lexer.l || true
           
           # নিখুঁত কার্নেল নাম
-          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Titan-OC-2.2G-800M-by-Plabon"/' kernel/arch/arm64/configs/m11q_open_defconfig
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-NetHunter-Titan-OC-2.0G-650M-by-Plabon"/' kernel/arch/arm64/configs/m11q_open_defconfig
           
-          # [•] স্যামসাং ও কোয়ালকম হার্ডওয়্যার লক এবং থার্মাল থ্রোটলিং ওভাররাইড ডিজেবল করা
-          sed -i 's/CONFIG_MSM_CPR=y/CONFIG_MSM_CPR=n/g' kernel/arch/arm64/configs/m11q_open_defconfig || true
-          sed -i 's/CONFIG_MSM_CPR3=y/CONFIG_MSM_CPR3=n/g' kernel/arch/arm64/configs/m11q_open_defconfig || true
+          # স্যামসাং থার্মাল ও নক্স লক ওভাররাইড (ভোল্টেজ স্কেলিং ঠিক রাখতে CPR চালু রাখা হয়েছে)
           echo "CONFIG_SEC_THERMAL=n" >> kernel/arch/arm64/configs/m11q_open_defconfig
           echo "CONFIG_SEC_RESTRICT_FORK=n" >> kernel/arch/arm64/configs/m11q_open_defconfig
           echo "CONFIG_TIMA=n" >> kernel/arch/arm64/configs/m11q_open_defconfig
@@ -286,6 +193,7 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_CPU_FREQ_GOV_PERFORMANCE
           ./scripts/config --file out/.config --enable CONFIG_DEVFREQ_GOV_PERFORMANCE
           ./scripts/config --file out/.config --enable CONFIG_DEVFREQ_GOV_QCOM_ADRENO_TZ
+          ./scripts/config --file out/.config --enable CONFIG_OVERLAY_FS
           
           # [২] Chroot ও সিস্টেম কোর
           ./scripts/config --file out/.config --enable CONFIG_SYSVIPC
@@ -463,7 +371,7 @@ jobs:
           make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" olddefconfig
           cd ..
 
-      # ৭. সম্পূর্ণ কার্নেল ও ডেডিকেটেড DTB একসাথে কম্পাইলেশন
+      # ৭. সম্পূর্ণ কার্নেল ও ডেডিকেটেড Image.gz-dtb কম্পাইলেশন
       - name: Compile Ultimate NetHunter Kernel
         run: |
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
@@ -473,102 +381,64 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # কার্নেল (Image.gz) ও নতুন ওভারক্লকড DTB একসাথে মেক করা
+          # কার্নেল ও ডেডিকেটেড Image.gz-dtb একসাথে মেক করা
           make -j$(nproc --all) O=out \
                ARCH=arm64 \
                CROSS_COMPILE=aarch64-linux-android- \
                CROSS_COMPILE_ARM32=arm-linux-androideabi- \
                HOSTCFLAGS="-fcommon" \
-               HOSTCXXFLAGS="-fcommon" Image.gz dtbs
+               HOSTCXXFLAGS="-fcommon" Image.gz-dtb dtbs
           cd ..
 
-      # ৮. স্পেশাল আনলকড ও ম্যাক্স-পাওয়ার RTL8188FU ওয়াইফাই হ্যাকিং ড্রাইভার বিল্ড
+      # ৮. আনলকড ও ম্যাক্স-পাওয়ার RTL8188FU ওয়াইফাই ড্রাইভার বিল্ড
       - name: Build and Package Dedicated RTL8188FU Unrestricted Driver
         run: |
           export PATH="$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH"
           git clone https://github.com/kelebek333/rtl8188fu rtl8188fu
           cd rtl8188fu
           
-          # [•] প্লাবন ভাইয়ের আলটিমেট ওয়াইফাই হ্যাকিং ড্রাইভার কোর প্যাচ (No Restrictions)
-          # ১. মনিটর মোড চিরস্থায়ী অন এবং হার্ডওয়্যার পাওয়ার সেভিং সম্পূর্ণ লক করা (Makefile)
+          # মনিটর মোড অন ও পাওয়ার সেভিং সম্পূর্ণ ডিজেবল
           sed -i 's/CONFIG_POWER_SAVING = y/CONFIG_POWER_SAVING = n/' Makefile
           sed -i 's/CONFIG_WIFI_MONITOR = n/CONFIG_WIFI_MONITOR = y/' Makefile
           
-          # ২. ড্রাইভারের কোর কনফিগারেশনে (include/autoconf.h) ফুল হ্যাকিং বুস্টার ইনজেক্ট করা
           cat << 'EOF' >> include/autoconf.h
           /* Ultimate Unrestricted NetHunter Network Driver by Plabon */
           #undef CONFIG_POWER_SAVING
-          #define CONFIG_POWER_SAVING 0 /* পাওয়ার সেভিং সম্পূর্ণ রিমুভ (প্যাকেট ড্রপ আটকাবে) */
-          #define CONFIG_WIFI_MONITOR 1 /* মনিটর মোড ব্যাকএন্ডে চিরস্থায়ী অন */
-          #define CONFIG_WIRELESS_EXT 1 /* ওল্ড iwconfig / WEXT টুলের ফুল সাপোর্ট নিশ্চিত করা */
-          #define CONFIG_USB_AUTOSUSPEND 0 /* ফোন যাতে ইউএসবি স্লিপে না পাঠায় (USB Autosuspend অফ) */
-          #define CONFIG_RTW_DEBUG 0 /* ডেবাক লগ সম্পূর্ণ অফ (কার্নেল ক্র্যাশ ও ল্যাগ আটকাবে) */
-          #define CONFIG_MP_MODE 0 /* Android সিস্টেম কম্প্যাটিবিলিটি বুস্টার */
-          /* অ্যাডভান্সড হ্যাকিং, রিট্রাই লক রিমুভাল ও অবিরাম প্যাকেট ইনজেকশন */
-          #define CONFIG_GLOBAL_UI_PID 1 /* airmon-ng রান করার সময় PID মিসম্যাচ এরর ফিক্স */
-          #define CONFIG_LAYER2_ROAMING 0 /* ইনজেকশনের সময় ওয়াইফাইয়ের অটো-চ্যানেল জাম্পিং বন্ধ রাখা */
-          #define CONFIG_TX_AC_LIFETIME 0 /* Deauth অ্যাটাক ফ্রেম লাইফটাইম আনক্যাপড করা (অবিরাম অ্যাটাক চলবে) */
-          #define CONFIG_PROBE_REQ_REPORT 1 /* হিডেন ওয়াইফাই জোনের প্রোব রিকোয়েস্ট ডাটা ক্যাপচার On */
-          #define CONFIG_RETRY_LIMIT 0 /* প্যাকেট ফেইল হলে ড্রপ না করে আনলিমিটেড টাইম রিট্রাই করা */
-          #define CONFIG_FORCE_BCN_TX_INT 1 /* কাস্টম বিকন ও ইভিল টুইন ফ্রেম ফোর্সড ইনজেকশন */
-          #define CONFIG_IOCTL_CFG80211 1 /* নতুন iw / nl80211 নেটওয়ার্ক টুলসের ফুল সাপোর্ট */
-          #define CONFIG_BR_EXT 1 /* ওয়াইফাই ব্রিজিং এবং MITM ক্যাপাবিলিটি আনলক */
-          #define CONFIG_IEEE80211W 1 /* Protected Management Frames (PMF) সিকিউরিটি বাইপাস ট্রাই */
-          /* [★] ম্যাক্সিমাম রেঞ্জ (TX Power Level) ও রেগুলেটরি লিমিট আনলক প্যাচ */
-          #define CONFIG_TX_PWR_BY_RATE 0 /* ইন্টারনাল রেট-ভিত্তিক পাওয়ার সীমাবদ্ধতা চিরতরে অফ */
-          #define CONFIG_TX_PWR_LMT 0 /* দেশভিত্তিক ওয়াইফাই পাওয়ার লিমিট এবং রেস্ট্রিকশন সম্পূর্ণ ডিজেবল */
-          #define CONFIG_FORCE_TX_PWR_DBM 35 /* সিগন্যাল পাওয়ার সর্বোচ্চ ৩5 dBm (প্রায় ৩ Watt Max) ফোর্স লক */
-          #define CONFIG_BUFF_TX_MAX 1 /* ইউএসবি ট্রান্সমিশন বাফার ম্যাক্সিমাম স্পিডে ফোর্স করা */
-          /* [★] কালির সব টুলস (Wifite, Fluxion, Aircrack) এর জন্য এক্সট্রা হ্যাকিং বুস্টার */
-          #define CONFIG_CCA_MAX_TH 0 /* ক্লিয়ার চ্যানেল অ্যাসেসমেন্ট লিমিট অফ (ওয়াইফাই জ্যাম থাকলেও ইনজেক্ট হবে) */
-          #define CONFIG_DISABLE_SCAN_ROAM 1 /* স্ক্যান করার সময় ডংগল যেন নিজে থেকে ডিসকানেক্ট না হয় */
-          #define CONFIG_FORCE_INJECTION_TIMING 1 /* প্যাকেট ইনজেকশন ইন্টারভাল গ্যাপ ০ মিলি-সেকেন্ডে লক করা */
-          #define CONFIG_RAW_TX_FRAME_INJECT 1 /* কাঁচা লেয়ার-২ ফ্রেম সরাসরি এয়ারে পুশ করার অনুমতি */
+          #define CONFIG_POWER_SAVING 0
+          #define CONFIG_WIFI_MONITOR 1
+          #define CONFIG_WIRELESS_EXT 1
+          #define CONFIG_USB_AUTOSUSPEND 0
+          #define CONFIG_RTW_DEBUG 0
+          #define CONFIG_MP_MODE 0
+          #define CONFIG_IOCTL_CFG80211 1
+          #define CONFIG_BR_EXT 1
+          #define CONFIG_IEEE80211W 1
           EOF
 
-          # ৩. লিনাক্স ৪.৯ সংস্করণের জন্য ওয়াইফাই অটো-রোমিং ফাংশন ফিক্স
-          python3 -c '
-          import re
-          path = "os_dep/linux/ioctl_cfg80211.c"
-          with open(path, "r") as f:
-              text = f.read()
-          text = re.sub(r"cfg80211_roamed\s*\([^;]*\);", "/* removed roaming */", text, flags=re.DOTALL)
-          with open(path, "w") as f:
-              f.write(text)
-          '
-
-          # ৪. সমস্ত রেস্ট্রিকশন-ফ্রি কনফিগারেশনসহ ড্রাইভার মডিউল কম্পাইল করা
+          # ড্রাইভার মডিউল কম্পাইল করা
           make -j$(nproc --all) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KSRC=../kernel/out modules
           cd ..
 
-          # ৫. ড্রাইভার ও ফার্মওয়্যার জিপ ফোল্ডারে পাঠানো
+          # ড্রাইভার ও ফার্মওয়্যার জিপ ফোল্ডারে পাঠানো
           cp rtl8188fu/rtl8188fu.ko AnyKernel3/
           cp rtl8188fu/firmware/rtl8188fufw.bin AnyKernel3/
 
-      # ৯. ১০০% সেইফ কার্নেল প্যাকেজিং (Image.gz এর সাথে ২.২ GHz DTB নিরাপদ মার্জিং ফিক্স)
+      # ৯. নিরাপদ ও অফিশিয়াল Image.gz-dtb প্যাকেজিং
       - name: Prepare Clean & Safe Flashable AnyKernel3 Package
         run: |
-          # ১. ডাইনামিকালি Image.gz এবং DTB ফাইল খুঁজে নেওয়া
-          IMAGE_FILE=$(find kernel/out/ -type f -name "Image.gz" | head -n 1)
-          if [ -z "$IMAGE_FILE" ]; then
-            IMAGE_FILE="kernel/out/arch/arm64/boot/Image.gz"
-          fi
+          # কার্নেলের তৈরি করা অফিশিয়াল Image.gz-dtb কপি করা
+          IMAGE_DTB=$(find kernel/out/arch/arm64/boot/ -type f -name "Image.gz-dtb" | head -n 1)
 
-          DTB_FILES=$(find kernel/out/ -type f -name "*.dtb" 2>/dev/null)
-
-          # ২. DTB ফাইল থাকলে Image.gz এর সাথে মার্জ করবে, অন্যথায় সরাসরি Image.gz ব্যবহার করবে
-          if [ -n "$DTB_FILES" ]; then
-            echo "[+] DTB file(s) found, merging with Image.gz..."
-            cat "$IMAGE_FILE" $DTB_FILES > AnyKernel3/Image.gz-dtb
+          if [ -n "$IMAGE_DTB" ]; then
+            echo "[+] Found official Image.gz-dtb, copying directly..."
+            cp "$IMAGE_DTB" AnyKernel3/Image.gz-dtb
           else
-            echo "[!] No DTB files found. Copying Image.gz as Image.gz-dtb..."
-            cp "$IMAGE_FILE" AnyKernel3/Image.gz-dtb
+            echo "[!] Fallback: Merging M11 DTBs into Image.gz-dtb..."
+            cat kernel/out/arch/arm64/boot/Image.gz $(find kernel/out/arch/arm64/boot/dts/ -name "*m11q*.dtb" -o -name "*sdm450*.dtb") > AnyKernel3/Image.gz-dtb
           fi
           
-          # ৩. আলাদা dtb ফাইল এবং এক্সট্রা কোনো নরমাল ইমেজ সম্পূর্ণ ডিলিট করা
+          # অপ্রয়োজনীয় ডাবল ফাইল ডিলিট
           rm -f AnyKernel3/dtb AnyKernel3/Image.gz AnyKernel3/zImage AnyKernel3/Image
-          
-          # ৪. গিট ক্যাশ ও অপ্রয়োজনীয় ফাইল ক্লিন করা
           rm -rf AnyKernel3/.git AnyKernel3/README.md AnyKernel3/*placeholder
 
       # ১০. সরাসরি ১৮ MB-র সিঙ্গেল ফ্ল্যাশেবল জিপ আপলোড
